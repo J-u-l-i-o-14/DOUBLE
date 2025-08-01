@@ -106,6 +106,11 @@ class DashboardController extends Controller
             'total_blood_bags' => BloodBag::available()->where('center_id', $user->center_id)->count(),
         ];
 
+        // Documents de réservation à valider (pour la cloche)
+        $pendingReservationDocuments = \App\Models\Document::whereHas('reservationRequest', function($q) use ($user) {
+            $q->where('center_id', $user->center_id);
+        })->where('verified', false)->get();
+
         // Alertes
         $alerts = [
             'expired_bags' => BloodBag::expired()->where('center_id', $user->center_id)->count(),
@@ -143,7 +148,8 @@ class DashboardController extends Controller
             'alerts',
             'stockByBloodType',
             'upcomingCampaigns',
-            'recentAppointments'
+            'recentAppointments',
+            'pendingReservationDocuments'
         ));
     }
 

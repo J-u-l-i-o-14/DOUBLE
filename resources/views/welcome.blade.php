@@ -1,4 +1,5 @@
 @extends('layouts.public')
+
 @section('title', 'Accueil')
 @section('content')
     <!-- Gros Carrousel sous la navbar -->
@@ -6,7 +7,7 @@
         <div class="absolute inset-0 z-0">
             <div class="w-full h-full carousel" id="mainCarousel">
                 <div class="w-full h-full">
-                    <img src="https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80" class="object-cover w-full h-96 block carousel-img" alt="Don de sang">
+                    <img src="images/savelife.webp" class="object-cover w-full h-96 block carousel-img" alt="Don de sang">
                     <div class="absolute inset-0 flex flex-col items-center justify-center bg-black/40">
                         <h2 class="text-3xl md:text-5xl font-bold text-white mb-2 drop-shadow">Sauvez des vies, donnez votre sang !</h2>
                         <p class="text-lg md:text-2xl text-white">Un petit geste, un grand impact.</p>
@@ -16,11 +17,31 @@
         </div>
     </div>
 
-    <!-- Formulaire de recherche multicritère sang avancé -->
-    <section class="max-w-3xl mx-auto mt-8 mb-8 p-6 bg-white rounded-lg shadow">
-        <h2 class="text-xl font-bold text-center text-red-700 mb-4">Rechercher du sang disponible</h2>
-        <form method="GET" action="{{ route('search.blood') }}" id="blood-search-form">
-            @csrf
+    <section class="py-10 bg-gradient-to-b from-red-100 to-white text-center">
+        <div class="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
+            <a href="{{ route('appointment.public') }}" class="transform transition-all duration-300 hover:scale-105">
+                <div class="bg-white rounded-lg shadow p-8 cursor-pointer hover:shadow-lg">
+                    <div class="text-4xl font-extrabold text-red-600 mb-4">
+                        <i class="fas fa-calendar-plus"></i>
+                    </div>
+                    <div class="text-2xl font-bold text-gray-800">Prendre Rendez-Vous</div>
+                    <div class="text-gray-600 mt-2">Pour donner votre sang et sauver des vies</div>
+                </div>
+            </a>
+            <a href="{{ route('blood.reservation') }}" class="transform transition-all duration-300 hover:scale-105">
+                <div class="bg-white rounded-lg shadow p-8 cursor-pointer hover:shadow-lg">
+                    <div class="text-4xl font-extrabold text-blue-600 mb-4">
+                        <i class="fas fa-tint"></i>
+                    </div>
+                    <div class="text-2xl font-bold text-gray-800">Réserver des poches de sang</div>
+                    <div class="text-gray-600 mt-2">Accéder aux stocks disponibles</div>
+                </div>
+            </a>
+        </div>
+    </section>
+
+    <!-- Corps du site : 3 parties (conditions, contre-indication, étapes) -->
+            {{-- @csrf
             <div class="mb-4">
                 <label for="region_id" class="block text-gray-700 font-medium mb-1">Région</label>
                 <select name="region_id" id="region_id" class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500">
@@ -73,10 +94,53 @@
             <div class="flex justify-center">
                 <button type="submit" class="btn btn-red">Rechercher</button>
             </div>
-        </form>
+        </form> --}}
     </section>
+    @push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // --- Empêcher la sélection de groupes sanguins déjà choisis ---
+    function updateBloodTypeOptions() {
+        // Récupère tous les selects de type sanguin
+        const selects = document.querySelectorAll('#blood-types-table select[name^="blood_types"]');
+        // Liste des valeurs déjà sélectionnées
+        const selectedValues = Array.from(selects).map(s => s.value).filter(v => v);
+        selects.forEach(select => {
+            const currentValue = select.value;
+            Array.from(select.options).forEach(opt => {
+                if(opt.value === "" || opt.value === currentValue) {
+                    opt.disabled = false;
+                } else {
+                    // Désactive si déjà sélectionné ailleurs
+                    opt.disabled = selectedValues.includes(opt.value);
+                }
+            });
+        });
+    }
+    // Sur ajout d'une ligne, mettre à jour les options
+    document.getElementById('add-row').addEventListener('click', function() {
+        setTimeout(updateBloodTypeOptions, 10);
+    });
+    // Sur changement d'un select, mettre à jour les autres
+    document.querySelector('#blood-types-table tbody').addEventListener('change', function(e) {
+        if(e.target && e.target.tagName === 'SELECT') {
+            updateBloodTypeOptions();
+        }
+    });
+    // Sur suppression d'une ligne, mettre à jour les options
+    document.querySelector('#blood-types-table tbody').addEventListener('click', function(e) {
+        if(e.target && e.target.classList.contains('remove-row')) {
+            setTimeout(updateBloodTypeOptions, 10);
+        }
+    });
+    // Initial update au chargement
+    updateBloodTypeOptions();
+});
+</script>
+@endpush
     <!-- Fin formulaire recherche avancé -->
 
+    
     <!-- Résultats de la recherche (AJAX) -->
     <div id="search-results"></div>
 
@@ -271,7 +335,20 @@
                         html += `<td class='p-2 text-center'>${center.blood_type}</td>`;
                         html += `<td class='p-2 text-center'>${center.requested_quantity}</td>`;
                         html += `<td class='p-2 font-bold text-green-700 text-center'>${center.can_provide}</td>`;
-                        html += `<td class='p-2 text-center'><a href='#' class='reserve-btn inline-block bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded animate-bounce-infinite'>Réserver</a></td>`;
+                        html += `<td class='p-2 text-center'>
+                            <button type="button" 
+                                    class="add-to-cart-btn inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+                                    data-center-id="${center.id}"
+                                    data-blood-type="${center.blood_type}"
+                                    data-center-name="${center.name}"
+                                    data-region="${center.region}"
+                                    data-quantity="${center.can_provide}"
+                                    data-requested-quantity="${center.requested_quantity}"
+                                    data-in-cart="false"
+                            >
+                                Ajouter (${center.can_provide})
+                            </button>
+                        </td>`;
                         html += `</tr>`;
                     });
                     html += `</tbody></table></section>`;
@@ -284,9 +361,71 @@
                 showResultsLoader(false);
                 resultsDiv.innerHTML = `<div class='w-full bg-red-600 text-white text-lg font-semibold rounded-lg p-6 text-center shadow-lg'>Erreur lors de la recherche.</div>`;
             });
+            
         };
+
+        // Gestion du panier
+    document.addEventListener('click', function(e) {
+    if(e.target && e.target.classList.contains('add-to-cart-btn')) {
+        const btn = e.target;
+        const quantity = parseInt(btn.dataset.quantity);
+
+        const data = {
+            center_id: btn.dataset.centerId,
+            blood_type: btn.dataset.bloodType,
+            quantity: quantity
+
+        };
+
+        fetch('/cart/add', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+            },
+            body: JSON.stringify(data)
+        })
+        .then(response => {
+            if (response.status === 401) {
+                // Sauvegarder l'état de la recherche
+                const searchParams = new FormData(document.getElementById('blood-search-form'));
+                const params = {};
+                searchParams.forEach((value, key) => {
+                    if (value) params[key] = value;
+                });
+                
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data && data.success) {
+                showToast(`✔️ ${quantity} poche(s) ajoutée(s) au panier`, false);
+                // Désactiver le bouton après l'ajout
+                btn.disabled = true;
+                btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                btn.classList.add('bg-gray-400');
+                btn.textContent = 'Ajouté';
+            } else {
+                showToast(data.message || 'Erreur lors de l\'ajout au panier', true);
+            }
+        })
+        .catch(error => {
+            showToast('Erreur lors de l\'ajout au panier', true);
+        });
+        }
+    });
     });
 
+
+
+
+
+
+
+
+
+
+    
     // Modal réservation
     function openReservationModal(center) {
       document.getElementById('modal-center').textContent = center.name + ' (' + center.region + ')';
@@ -362,7 +501,22 @@
           showToast('Numéro de téléphone invalide (8 chiffres, commence par 9, 7 ou 2).', true);
           return;
         }
-        const formData = new FormData(form);
+        // Construction du FormData avec la structure attendue
+        const formData = new FormData();
+        formData.append('center_id', document.getElementById('modal-center-id').value);
+        formData.append('client_name', document.getElementById('client-name').value);
+        formData.append('client_email', document.getElementById('client-email').value);
+        formData.append('client_phone', document.getElementById('client-phone').value);
+        formData.append('payment_method', paymentMethod.value);
+        // Ajout des items (un seul dans le modal, mais structure tableau)
+        formData.append('items[0][blood_type_id]', document.getElementById('modal-blood-type-input').value);
+        formData.append('items[0][quantity]', document.getElementById('modal-quantity-input').value);
+        // Ajout des fichiers multiples
+        const files = document.getElementById('client-docs').files;
+        for(let i=0; i<files.length; i++) {
+          formData.append('client_docs[]', files[i]);
+        }
+        // Envoi AJAX
         let msg = '';
         try {
           const res = await fetch("{{ route('reservation.store') }}", {
@@ -431,7 +585,7 @@
             <!-- Partie 1 : Conditions pour donner son sang -->
             <div class="bg-white rounded-lg shadow p-6 flex flex-col gap-4">
                 <h3 class="text-2xl font-bold text-red-600 mb-2">Puis-je donner mon sang aujourd'hui ?</h3>
-                <img src="https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=400&q=80" alt="Don de sang" class="rounded-lg w-full h-40 object-cover">
+                <img src="images/coeur.jpg" alt="Don de sang" class="rounded-lg w-full h-40 object-cover">
                 <ul class="list-disc list-inside text-gray-700 mt-2 space-y-1">
                     <li>Vous pesez au minimum 50 kilos</li>
                     <li>Vous avez entre 18 et 70 ans</li>
@@ -458,7 +612,7 @@
         <div class="bg-white rounded-lg shadow p-6 mt-8">
             <h3 class="text-2xl font-bold text-center text-blue-600 mb-6">Étapes du don de sang</h3>
             <div class="flex flex-col md:flex-row items-center gap-6">
-                <img src="https://images.unsplash.com/photo-1464983953574-0892a716854b?auto=format&fit=crop&w=500&q=80" alt="Etapes don de sang" class="rounded-lg w-full md:w-1/3 h-40 object-cover">
+                <img src="images/don.jpg" alt="Etapes don de sang" class="rounded-lg w-full md:w-1/3 h-40 object-cover">
                 <ol class="list-decimal list-inside text-gray-700 space-y-2 w-full md:w-2/3">
                     <li><span class="font-bold text-red-600">Accueil et inscription :</span> Un <em>questionnaire</em> vous est remis afin de constituer le dossier de donneur, et de servir de base à l'entretien médical.</li>
                     <li><span class="font-bold text-red-600">L'entretien médical :</span> Confidentiel et couvert par le secret médical, l'entretien médical est essentiel pour la sécurité transfusionnelle.</li>
@@ -499,13 +653,13 @@
                             <p class="text-white">- Ahmed, bénéficiaire</p>
                         </div>
                     </div>
-                    <img src="https://images.unsplash.com/photo-1464983953574-0892a716854b?auto=format&fit=crop&w=800&q=80" class="object-cover w-full h-60" alt="Témoignage">
+                    <img src="avif.avif" class="object-cover w-full h-60" alt="Témoignage">
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Formulaire de contact -->
+    <!-- Formulaire de contact 
     <section class="py-10 bg-gray-100" id="contact">
         <div class="max-w-xl mx-auto bg-white rounded-lg shadow p-8">
             <h2 class="text-2xl font-bold text-center mb-6 text-red-700">Contactez-nous</h2>
@@ -550,33 +704,7 @@
     </section>
 
     <!-- Formulaire de recherche multicritère sang -->
-    <section class="max-w-3xl mx-auto mt-8 mb-8 p-6 bg-white rounded-lg shadow">
-        <h2 class="text-xl font-bold text-center text-red-700 mb-4">Rechercher du sang disponible</h2>
-        <form method="GET" action="{{ route('search.blood') }}" class="flex flex-col md:flex-row gap-4 items-center justify-center">
-            @csrf
-            <div class="w-full md:w-1/2">
-                <label for="region_id" class="block text-gray-700 font-medium mb-1">Région</label>
-                <select name="region_id" id="region_id" class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500">
-                    <option value="">Toutes les régions</option>
-                    @foreach($regions ?? [] as $region)
-                        <option value="{{ $region->id }}">{{ $region->name }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div class="w-full md:w-1/2">
-                <label for="blood_type_id" class="block text-gray-700 font-medium mb-1">Groupe sanguin</label>
-                <select name="blood_type_id" id="blood_type_id" class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500">
-                    <option value="">Tous les groupes</option>
-                    @foreach($bloodTypes ?? [] as $type)
-                        <option value="{{ $type->id }}">{{ $type->group }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div class="w-full md:w-auto flex items-end">
-                <button type="submit" class="btn btn-red w-full md:w-auto">Rechercher</button>
-            </div>
-        </form>
-    </section>
+    
     <!-- Fin formulaire recherche -->
 
     <style>

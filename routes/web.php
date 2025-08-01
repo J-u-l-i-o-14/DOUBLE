@@ -10,10 +10,19 @@ use App\Http\Controllers\PatientController;
 use App\Http\Controllers\TransfusionController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\ContactController;
+use App\Http\Controllers\BloodReservationController;
 use Illuminate\Support\Facades\Route;
 
-// Page d'accueil = recherche sang
-Route::get('/', [\App\Http\Controllers\SearchBloodController::class, 'search'])->name('home');
+// Page d'accueil
+Route::get('/', function() {
+    return view('welcome');
+})->name('home');
+
+// Routes pour la réservation de sang (protégées par auth)
+Route::middleware(['auth'])->group(function() {
+    Route::get('/blood-reservation', [BloodReservationController::class, 'index'])->name('blood.reservation');
+    Route::post('/blood-reservation/search', [BloodReservationController::class, 'search'])->name('blood.reservation.search');
+});
 
 // Dashboard principal avec redirection selon le rôle
 Route::get('/dashboard', [DashboardController::class, 'index'])
@@ -49,6 +58,8 @@ Route::middleware(['auth', 'role:manager'])->group(function () {
 Route::middleware(['auth', 'role:client'])->group(function () {
     Route::get('/campaigns/public', [CampaignController::class, 'upcoming'])->name('campaigns.public');
     Route::get('/blood-bags/available', [BloodBagController::class, 'available'])->name('blood-bags.available');
+    Route::post('/cart/add', [App\Http\Controllers\CartController::class, 'add'])->name('cart.add');
+    Route::get('/cart/items', [App\Http\Controllers\CartController::class, 'getCartItems'])->name('cart.items');
 });
 
 // Routes pour les admins (avec dashboard)
@@ -89,6 +100,7 @@ Route::get('/recherche-sang', [\App\Http\Controllers\SearchBloodController::clas
 
 // Recherche AJAX de sang (API)
 Route::post('/api/recherche-sang', [\App\Http\Controllers\SearchBloodController::class, 'searchAjax'])->name('api.search.blood');
+//Routes pour le panier
 
 // API: centres par région
 Route::get('/api/centers-by-region/{region}', [\App\Http\Controllers\SearchBloodController::class, 'centersByRegion']);

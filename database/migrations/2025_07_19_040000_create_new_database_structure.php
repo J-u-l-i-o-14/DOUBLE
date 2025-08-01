@@ -118,8 +118,12 @@ return new class extends Migration
             $table->enum('status', ['pending', 'confirmed', 'cancelled', 'completed', 'expired'])->default('pending');
             $table->decimal('total_amount', 10, 2);
             $table->decimal('paid_amount', 10, 2)->default(0.00);
-            $table->string('document_path')->nullable();
+            $table->text('document_path')->nullable(); // Pour stocker un JSON de plusieurs fichiers
             $table->dateTime('expires_at')->nullable();
+            $table->string('client_name')->nullable();
+            $table->string('client_email')->nullable();
+            $table->string('client_phone', 30)->nullable();
+            $table->string('payment_method', 50)->nullable();
             $table->timestamps();
         });
 

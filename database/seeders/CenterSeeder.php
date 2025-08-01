@@ -14,7 +14,7 @@ class CenterSeeder extends Seeder
         $centers = [
             // Un seul centre par région
             1 => [
-                'name' => 'CHU SO - Tokoin Doumassessé',
+                'name' => 'CHU SO - Tokoin Doumassesse',
                 'address' => 'Tokoin Doumassessé, Lomé',
                 'phone' => '+228 22 21 45 67',
                 'email' => 'chu.so@cts-togo.tg',
@@ -22,7 +22,7 @@ class CenterSeeder extends Seeder
                 'is_active' => true,
             ],
             2 => [
-                'name' => 'CHR Atakpamé',
+                'name' => 'CHR Atakpame',
                 'address' => 'Atakpamé, Région des Plateaux',
                 'phone' => '+228 24 45 67 89',
                 'email' => 'chr.atakpame@cts-togo.tg',
@@ -30,7 +30,7 @@ class CenterSeeder extends Seeder
                 'is_active' => true,
             ],
             3 => [
-                'name' => 'CHR Sokodé',
+                'name' => 'CHR Sokode',
                 'address' => 'Sokodé, Région Centrale',
                 'phone' => '+228 26 67 89 01',
                 'email' => 'chr.sokode@cts-togo.tg',

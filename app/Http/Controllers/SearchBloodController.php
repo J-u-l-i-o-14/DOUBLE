@@ -130,7 +130,8 @@ class SearchBloodController extends Controller
             'client_email' => 'required|email|max:255',
             'client_phone' => 'required|string|max:30',
             'payment_method' => 'required|string|max:50',
-            'document' => 'nullable|file|mimes:pdf,jpg,png|max:2048',
+            'client_docs' => 'required|array',
+            'client_docs.*' => 'file|mimes:pdf,jpg,png|max:2048',
         ]);
 
         try {
@@ -164,10 +165,12 @@ class SearchBloodController extends Controller
                 $totalAmount += $item['quantity'] * 5000;
             }
 
-            // 4. Gérer l'upload du document
-            $documentPath = null;
-            if ($request->hasFile('document')) {
-                $documentPath = $request->file('document')->store('documents', 'public');
+            // 4. Gérer l'upload des documents multiples
+            $documentPaths = [];
+            if ($request->hasFile('client_docs')) {
+                foreach ($request->file('client_docs') as $file) {
+                    $documentPaths[] = $file->store('documents', 'public');
+                }
             }
 
             // 5. Créer la demande de réservation
@@ -177,7 +180,7 @@ class SearchBloodController extends Controller
             $reservation->status = 'pending';
             $reservation->total_amount = $totalAmount;
             $reservation->paid_amount = $totalAmount * 0.5; // Paiement partiel de 50%
-            $reservation->document_path = $documentPath;
+            $reservation->document_path = json_encode($documentPaths); // Stocker les chemins en JSON
             $reservation->client_name = $validated['client_name'];
             $reservation->client_email = $validated['client_email'];
             $reservation->client_phone = $validated['client_phone'];

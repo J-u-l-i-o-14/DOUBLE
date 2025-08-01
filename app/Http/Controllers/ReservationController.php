@@ -98,45 +98,70 @@ class ReservationController extends Controller
             return back()->with('error', 'Le paiement de 50% est requis pour confirmer la réservation.');
         }
 
-        // Confirmer la réservation
-        $reservation->update([
-            'status' => 'confirmed',
-            'expires_at' => Carbon::now()->addHours(72), // 72 heures
-        ]);
+        try {
+            \DB::transaction(function () use ($reservation) {
+                \Log::info('Début confirmation réservation', ['reservation_id' => $reservation->id]);
+                // Confirmer la réservation
+                $reservation->update([
+                    'status' => 'confirmed',
+                    'expires_at' => \Carbon\Carbon::now()->addHours(72), // 72 heures
+                ]);
 
-        // Réserver les poches spécifiques
-        $this->reserveBloodBags($reservation);
+                // Réserver les poches spécifiques
+                $this->reserveBloodBags($reservation);
 
-        // Créer un audit
-        $reservation->audits()->create([
-            'user_id' => auth()->id(),
-            'action' => 'confirmed',
-            'notes' => 'Réservation confirmée par le gestionnaire',
-        ]);
+                // Créer un audit
+                $reservation->audits()->create([
+                    'user_id' => auth()->id(),
+                    'action' => 'confirmed',
+                    'notes' => 'Réservation confirmée par le gestionnaire',
+                ]);
+                \Log::info('Fin confirmation réservation', ['reservation_id' => $reservation->id]);
+            });
+        } catch (\Exception $e) {
+            \Log::error('Erreur lors de la confirmation de réservation', ['reservation_id' => $reservation->id, 'error' => $e->getMessage()]);
+            return back()->with('error', 'Erreur lors de la confirmation de la réservation : ' . $e->getMessage());
+        }
 
         return back()->with('success', 'Réservation confirmée avec succès.');
     }
 
     private function reserveBloodBags($reservation)
     {
+        $reservedTypes = [];
         foreach ($reservation->items as $item) {
+            \Log::info('Réservation de poches', [
+                'reservation_id' => $reservation->id,
+                'blood_type_id' => $item->blood_type_id,
+                'quantity' => $item->quantity
+            ]);
+            // Sélectionner les poches disponibles avec verrouillage
             $bloodBags = BloodBag::where('center_id', $reservation->center_id)
                 ->where('blood_type_id', $item->blood_type_id)
                 ->where('status', 'available')
+                ->lockForUpdate()
                 ->limit($item->quantity)
                 ->get();
 
+            if ($bloodBags->count() < $item->quantity) {
+                throw new \Exception('Stock insuffisant lors de la réservation.');
+            }
+
+            // Update groupé
+            BloodBag::whereIn('id', $bloodBags->pluck('id'))->update(['status' => 'reserved']);
+
+            // Création des liens ReservationBloodBag (toujours en boucle)
             foreach ($bloodBags as $bloodBag) {
-                $bloodBag->update(['status' => 'reserved']);
-                
                 ReservationBloodBag::create([
                     'reservation_id' => $reservation->id,
                     'blood_bag_id' => $bloodBag->id,
                 ]);
             }
-
-            // Mettre à jour l'inventaire
-            $this->updateInventory($reservation->center_id, $item->blood_type_id);
+            $reservedTypes[] = $item->blood_type_id;
+        }
+        // Mettre à jour l'inventaire une seule fois par type réservé
+        foreach (array_unique($reservedTypes) as $bloodTypeId) {
+            $this->updateInventory($reservation->center_id, $bloodTypeId);
         }
     }
 
