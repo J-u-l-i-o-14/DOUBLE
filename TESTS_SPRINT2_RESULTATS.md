@@ -16,7 +16,7 @@
 - **Gestion des actions :**
   - Bouton bleu → clic → appelle `/cart/add` → devient rouge si succès
   - Bouton rouge → clic → appelle `/cart/remove-by-data` → devient bleu si succès
-  - Si article déjà dans le panier → bouton devient rouge + message informatif
+  - Si article déjà dans le panier → bouton devient rouge + message informatif yewannnnnn
 
 ### 3. Synchronisation avec le modal ✅
 - **Fonction `updateButtonStatesAfterCartChange()`** : Met à jour l'état des boutons après modifications via le modal
