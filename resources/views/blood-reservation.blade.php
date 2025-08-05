@@ -103,20 +103,28 @@
                 });
             }
 
-            // Gérer l'ajout/retrait du panier
+            // Gérer l'ajout/retrait du panier (optimisé)
             document.addEventListener('click', function(e) {
                 if (e.target && e.target.classList.contains('add-to-cart-btn')) {
                     const btn = e.target;
                     const bloodType = btn.dataset.bloodType;
+                    const centerId = btn.dataset.centerId;
                     const quantity = parseInt(btn.dataset.quantity);
                     const isInCart = btn.classList.contains('in-cart');
 
+                    // Désactiver le bouton pendant le traitement
+                    btn.disabled = true;
+                    const originalText = btn.textContent;
+                    btn.textContent = 'Traitement...';
+
                     // Si on retire du panier
                     if (isInCart) {
+                        // Mise à jour immédiate de l'UI (optimisation UX)
                         bloodTypeQuantities.added[bloodType] = (bloodTypeQuantities.added[bloodType] || 0) - quantity;
                         btn.classList.remove('in-cart', 'bg-red-600', 'hover:bg-red-700');
                         btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
                         btn.textContent = `Ajouter (${quantity})`;
+                        btn.disabled = false;
                         showToast('Article retiré du panier', false);
                     }
                     // Si on ajoute au panier
@@ -125,26 +133,88 @@
                         const requestedQuantity = bloodTypeQuantities.requested[bloodType] || 0;
 
                         if (currentTotal > requestedQuantity) {
+                            btn.disabled = false;
+                            btn.textContent = originalText;
                             showToast(`Erreur: La quantité totale (${currentTotal}) dépasserait la quantité demandée (${requestedQuantity})`, true);
                             return;
                         }
 
+                        // Mise à jour immédiate de l'UI (optimisation UX)
                         bloodTypeQuantities.added[bloodType] = currentTotal;
                         btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
                         btn.classList.add('in-cart', 'bg-red-600', 'hover:bg-red-700');
                         btn.textContent = 'Retirer';
+                        btn.disabled = false;
                         showToast(`${quantity} poche(s) ajoutée(s) au panier`, false);
+
+                        // Envoi de la requête en arrière-plan (non bloquant)
+                        fetch('/cart/add', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                            },
+                            body: JSON.stringify({
+                                center_id: centerId,
+                                blood_type: bloodType,
+                                quantity: quantity
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (!data.success) {
+                                // En cas d'erreur serveur, annuler la mise à jour UI
+                                bloodTypeQuantities.added[bloodType] = (bloodTypeQuantities.added[bloodType] || 0) - quantity;
+                                btn.classList.remove('in-cart', 'bg-red-600', 'hover:bg-red-700');
+                                btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                                btn.textContent = `Ajouter (${quantity})`;
+                                showToast('Erreur: ' + (data.message || 'Erreur lors de l\'ajout au panier'), true);
+                            }
+                        })
+                        .catch(error => {
+                            // En cas d'erreur réseau, annuler la mise à jour UI
+                            console.error('Erreur réseau:', error);
+                            bloodTypeQuantities.added[bloodType] = (bloodTypeQuantities.added[bloodType] || 0) - quantity;
+                            btn.classList.remove('in-cart', 'bg-red-600', 'hover:bg-red-700');
+                            btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                            btn.textContent = `Ajouter (${quantity})`;
+                            showToast('Erreur de connexion', true);
+                        });
                     }
                 }
             });
 
-            // Fonction pour afficher les toast messages
+            // Fonction pour afficher les toast messages (optimisée)
             function showToast(message, isError) {
-                const toast = document.createElement('div');
-                toast.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg ${isError ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`;
+                // Réutiliser l'élément toast existant pour éviter la création répétée
+                let toast = document.getElementById('global-toast');
+                if (!toast) {
+                    toast = document.createElement('div');
+                    toast.id = 'global-toast';
+                    toast.className = 'fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 transition-opacity duration-300';
+                    document.body.appendChild(toast);
+                }
+
+                // Annuler le timeout précédent s'il existe
+                if (toast.timeoutId) {
+                    clearTimeout(toast.timeoutId);
+                }
+
+                // Mettre à jour le style et le contenu
+                toast.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 transition-opacity duration-300 ${isError ? 'bg-red-100 text-red-700 border border-red-300' : 'bg-green-100 text-green-700 border border-green-300'}`;
                 toast.textContent = message;
-                document.body.appendChild(toast);
-                setTimeout(() => toast.remove(), 3000);
+                toast.style.opacity = '1';
+
+                // Programmer la disparition
+                toast.timeoutId = setTimeout(() => {
+                    toast.style.opacity = '0';
+                    setTimeout(() => {
+                        if (toast.parentNode) {
+                            toast.parentNode.removeChild(toast);
+                        }
+                    }, 300);
+                }, 2000);
             }
 
             // Mise à jour initiale des quantités demandées
@@ -267,6 +337,7 @@
                                     <button type='button'
                                             class='add-to-cart-btn ${isInCart ? 'in-cart bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} text-white font-bold py-2 px-4 rounded transition-colors duration-200'
                                             data-blood-type='${bloodType}'
+                                            data-center-id='${center.id}'
                                             data-quantity='${center.can_provide}'>
                                         ${isInCart ? 'Retirer' : `Ajouter (${center.can_provide})`}
                                     </button>
@@ -274,7 +345,18 @@
                             </tr>`;
                         });
 
-                        html += `</tbody></table></section>`;
+                        html += `</tbody></table>`;
+                        
+                        // Bouton Commander en bas du tableau
+                        html += `<div class="mt-6 flex justify-center">
+                            <button type="button" 
+                                    onclick="openCartModal()"
+                                    class="btn-red">
+                                Commander
+                            </button>
+                        </div>`;
+                        
+                        html += `</section>`;
                         resultsDiv.innerHTML = html;
                     } else {
                         resultsDiv.innerHTML = `<section class='max-w-4xl mx-auto mb-8 p-6'>
@@ -289,9 +371,175 @@
                     resultsDiv.innerHTML = `<div class='text-center text-red-600 p-4'>Une erreur est survenue</div>`;
                 });
             };
+
+            // Fonction pour ouvrir le modal et charger les articles
+            window.openCartModal = function() {
+                console.log('Ouverture du modal du panier...');
+                document.getElementById('cart-modal').classList.remove('hidden');
+                loadCartItems();
+            };
+
+            window.closeCartModal = function() {
+                document.getElementById('cart-modal').classList.add('hidden');
+            };
+
+            window.loadCartItems = function() {
+                console.log('Chargement des articles du panier...');
+                fetch('/cart', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                    }
+                })
+                    .then(response => {
+                        console.log('Réponse reçue:', response.status);
+                        if (!response.ok) {
+                            throw new Error(`Erreur HTTP: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Données du panier:', data);
+                        const cartItemsDiv = document.getElementById('cart-items');
+                        const emptyMessage = document.getElementById('empty-cart-message');
+                        const cartFooter = document.getElementById('cart-footer');
+                        const cartTotal = document.getElementById('cart-total');
+
+                        if (data.success && data.items && data.items.length > 0) {
+                            let html = '';
+                            data.items.forEach(item => {
+                                html += `
+                                    <div class="flex items-center justify-between bg-gray-50 p-4 rounded border">
+                                        <div class="flex-1">
+                                            <h4 class="font-semibold text-gray-900">${item.center_name || 'Centre inconnu'}</h4>
+                                            <p class="text-sm text-gray-600"><strong>Groupe sanguin:</strong> ${item.blood_type}</p>
+                                            <p class="text-sm text-gray-600"><strong>Quantité:</strong> ${item.quantity} poche(s)</p>
+                                        </div>
+                                        <button type="button" 
+                                                onclick="removeCartItem(${item.id})"
+                                                class="ml-4 text-red-600 hover:text-red-800 hover:bg-red-50 p-2 rounded"
+                                                title="Supprimer cet article">
+                                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                `;
+                            });
+                            cartItemsDiv.innerHTML = html;
+                            cartItemsDiv.classList.remove('hidden');
+                            emptyMessage.classList.add('hidden');
+                            cartFooter.classList.remove('hidden');
+                            cartTotal.textContent = `${data.total_quantity || 0} poche(s)`;
+                        } else {
+                            cartItemsDiv.innerHTML = '';
+                            cartItemsDiv.classList.add('hidden');
+                            emptyMessage.classList.remove('hidden');
+                            cartFooter.classList.add('hidden');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Erreur lors du chargement du panier:', error);
+                        showToast('Erreur lors du chargement du panier', true);
+                        // Afficher un message d'erreur dans le modal
+                        const cartItemsDiv = document.getElementById('cart-items');
+                        cartItemsDiv.innerHTML = `
+                            <div class="text-center py-4 text-red-600">
+                                <p>Erreur lors du chargement du panier</p>
+                                <button onclick="loadCartItems()" class="text-blue-600 underline mt-2">Réessayer</button>
+                            </div>
+                        `;
+                        cartItemsDiv.classList.remove('hidden');
+                        document.getElementById('empty-cart-message').classList.add('hidden');
+                        document.getElementById('cart-footer').classList.add('hidden');
+                    });
+            };
+
+            window.removeCartItem = function(itemId) {
+                fetch(`/cart/${itemId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'X-CSRF-TOKEN': document.querySelector('input[name=_token]').value
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        loadCartItems();
+                        showToast('Article supprimé du panier', false);
+                    } else {
+                        showToast(data.message || 'Erreur lors de la suppression', true);
+                    }
+                })
+                .catch(error => {
+                    showToast('Erreur lors de la suppression', true);
+                });
+            };
+
+            window.clearCart = function() {
+                if (confirm('Êtes-vous sûr de vouloir vider le panier ?')) {
+                    fetch('/cart', {
+                        method: 'DELETE',
+                        headers: {
+                            'X-CSRF-TOKEN': document.querySelector('input[name=_token]').value
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            loadCartItems();
+                            showToast('Panier vidé', false);
+                        } else {
+                            showToast(data.message || 'Erreur lors du vidage', true);
+                        }
+                    })
+                    .catch(error => {
+                        showToast('Erreur lors du vidage', true);
+                    });
+                }
+            };
+
+            window.processPayment = function() {
+                fetch('/cart/payment', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': document.querySelector('input[name=_token]').value
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showToast('Paiement effectué avec succès!', false);
+                        closeCartModal();
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 2000);
+                    } else {
+                        showToast(data.message || 'Erreur lors du paiement', true);
+                    }
+                })
+                .catch(error => {
+                    showToast('Erreur lors du paiement', true);
+                });
+            };
+
+            // Gestionnaire pour fermer le modal avec la touche Échap
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    const modal = document.getElementById('cart-modal');
+                    if (!modal.classList.contains('hidden')) {
+                        closeCartModal();
+                    }
+                }
+            });
+
         });
     </script>
     @endpush
+
+    <!-- Inclusion du modal du panier -->
+    @include('partials._cart-modal')
 
 @endsection
 

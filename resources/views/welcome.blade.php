@@ -95,7 +95,7 @@
                 <button type="submit" class="btn btn-red">Rechercher</button>
             </div>
         </form> --}}
-    </section>
+    {{-- </section>
     @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -140,14 +140,14 @@ document.addEventListener('DOMContentLoaded', function() {
 @endpush
     <!-- Fin formulaire recherche avancé -->
 
-    
+
     <!-- Résultats de la recherche (AJAX) -->
     <div id="search-results"></div>
 
     <!-- Loader résultats -->
     <div id="results-loader" class="w-full flex justify-center items-center py-8 hidden">
       <div class="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-red-600 opacity-70"></div>
-    </div>
+    </div> --}}
 
     <!-- Modal de réservation -->
     <div id="reservation-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 hidden">
@@ -336,7 +336,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         html += `<td class='p-2 text-center'>${center.requested_quantity}</td>`;
                         html += `<td class='p-2 font-bold text-green-700 text-center'>${center.can_provide}</td>`;
                         html += `<td class='p-2 text-center'>
-                            <button type="button" 
+                            <button type="button"
                                     class="add-to-cart-btn inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
                                     data-center-id="${center.id}"
                                     data-blood-type="${center.blood_type}"
@@ -361,7 +361,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 showResultsLoader(false);
                 resultsDiv.innerHTML = `<div class='w-full bg-red-600 text-white text-lg font-semibold rounded-lg p-6 text-center shadow-lg'>Erreur lors de la recherche.</div>`;
             });
-            
+
         };
 
         // Gestion du panier
@@ -393,7 +393,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 searchParams.forEach((value, key) => {
                     if (value) params[key] = value;
                 });
-                
+
             }
             return response.json();
         })
@@ -425,7 +425,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 
-    
+
     // Modal réservation
     function openReservationModal(center) {
       document.getElementById('modal-center').textContent = center.name + ' (' + center.region + ')';
@@ -565,7 +565,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     </script>
 
-    <!-- Statistiques (donneurs, poches) 
+    <!-- Statistiques (donneurs, poches)
     <section class="py-10 bg-gradient-to-b from-red-100 to-white text-center">
         <div class="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
             <div class="bg-white rounded-lg shadow p-6">
@@ -659,7 +659,7 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
     </section>
 
-    <!-- Formulaire de contact 
+    <!-- Formulaire de contact
     <section class="py-10 bg-gray-100" id="contact">
         <div class="max-w-xl mx-auto bg-white rounded-lg shadow p-8">
             <h2 class="text-2xl font-bold text-center mb-6 text-red-700">Contactez-nous</h2>
@@ -704,7 +704,7 @@ document.addEventListener('DOMContentLoaded', function() {
     </section>
 
     <!-- Formulaire de recherche multicritère sang -->
-    
+
     <!-- Fin formulaire recherche -->
 
     <style>

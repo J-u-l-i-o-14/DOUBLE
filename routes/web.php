@@ -54,12 +54,17 @@ Route::middleware(['auth', 'role:manager'])->group(function () {
     Route::get('/blood-bags/stock', [BloodBagController::class, 'stock'])->name('blood-bags.stock');
 });
 
-// Routes pour les clients (avec dashboard)
-Route::middleware(['auth', 'role:client'])->group(function () {
+// Routes pour les clients et donneurs
+Route::middleware(['auth', 'role:client,donor'])->group(function () {
     Route::get('/campaigns/public', [CampaignController::class, 'upcoming'])->name('campaigns.public');
     Route::get('/blood-bags/available', [BloodBagController::class, 'available'])->name('blood-bags.available');
+    
+    // Routes du panier
+    Route::get('/cart', [App\Http\Controllers\CartController::class, 'index'])->name('cart.index');
     Route::post('/cart/add', [App\Http\Controllers\CartController::class, 'add'])->name('cart.add');
-    Route::get('/cart/items', [App\Http\Controllers\CartController::class, 'getCartItems'])->name('cart.items');
+    Route::delete('/cart/{id}', [App\Http\Controllers\CartController::class, 'remove'])->name('cart.remove');
+    Route::delete('/cart', [App\Http\Controllers\CartController::class, 'clear'])->name('cart.clear');
+    Route::post('/cart/payment', [App\Http\Controllers\CartController::class, 'processPayment'])->name('cart.payment');
 });
 
 // Routes pour les admins (avec dashboard)
