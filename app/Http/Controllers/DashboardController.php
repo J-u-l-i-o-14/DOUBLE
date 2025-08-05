@@ -21,7 +21,7 @@ class DashboardController extends Controller
         
         // Vérifier si l'utilisateur a accès à un dashboard
         if (!$user->has_dashboard) {
-            return redirect()->route('welcome')->with('error', 'Vous n\'avez pas accès au dashboard.');
+            return redirect()->route('home')->with('error', 'Vous n\'avez pas accès au dashboard.');
         }
         
         switch ($user->role) {

@@ -30,9 +30,12 @@ class CartController extends Controller
                           ->first();
 
             if ($cartItem) {
-                // Mettre à jour la quantité
-                $cartItem->quantity += $validated['quantity'];
-                $cartItem->save();
+                // L'article existe déjà - retourner une erreur au lieu de le supprimer
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cet article est déjà dans votre panier',
+                    'action' => 'already_exists'
+                ]);
             } else {
                 // Créer un nouvel article
                 Cart::create([
@@ -41,17 +44,62 @@ class CartController extends Controller
                     'blood_type' => $validated['blood_type'],
                     'quantity' => $validated['quantity']
                 ]);
-            }
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Article ajouté au panier'
-            ]);
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Article ajouté au panier',
+                    'action' => 'added'
+                ]);
+            }
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur lors de l\'ajout au panier'
+            ], 500);
+        }
+    }
+
+    /**
+     * Supprimer un article du panier par ses données
+     */
+    public function removeByData(Request $request)
+    {
+        if (!Auth::check()) {
+            return response()->json(['message' => 'Vous devez être connecté'], 401);
+        }
+
+        $validated = $request->validate([
+            'center_id' => 'required|exists:centers,id',
+            'blood_type' => 'required|string',
+            'quantity' => 'required|integer|min:1'
+        ]);
+
+        try {
+            $cartItem = Cart::where('user_id', Auth::id())
+                          ->where('center_id', $validated['center_id'])
+                          ->where('blood_type', $validated['blood_type'])
+                          ->first();
+
+            if (!$cartItem) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Article non trouvé dans le panier'
+                ], 404);
+            }
+
+            $cartItem->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Article supprimé du panier',
+                'action' => 'removed'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la suppression'
             ], 500);
         }
     }
@@ -71,6 +119,7 @@ class CartController extends Controller
             ->map(function ($item) {
                 return [
                     'id' => $item->id,
+                    'center_id' => $item->center_id,  // Ajouter center_id
                     'center_name' => $item->center->name,
                     'blood_type' => $item->blood_type,
                     'quantity' => $item->quantity

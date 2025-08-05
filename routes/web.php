@@ -63,6 +63,7 @@ Route::middleware(['auth', 'role:client,donor'])->group(function () {
     Route::get('/cart', [App\Http\Controllers\CartController::class, 'index'])->name('cart.index');
     Route::post('/cart/add', [App\Http\Controllers\CartController::class, 'add'])->name('cart.add');
     Route::delete('/cart/{id}', [App\Http\Controllers\CartController::class, 'remove'])->name('cart.remove');
+    Route::delete('/cart/remove-by-data', [App\Http\Controllers\CartController::class, 'removeByData'])->name('cart.removeByData');
     Route::delete('/cart', [App\Http\Controllers\CartController::class, 'clear'])->name('cart.clear');
     Route::post('/cart/payment', [App\Http\Controllers\CartController::class, 'processPayment'])->name('cart.payment');
 });
