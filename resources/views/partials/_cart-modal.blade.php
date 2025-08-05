@@ -47,9 +47,9 @@
                         Fermer
                     </button>
                     <button type="button" 
-                            onclick="processPayment()"
-                            class="btn-red">
-                        Payer
+                            onclick="openOrderReservationModal()"
+                            class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded transition-colors">
+                        🩸 Réserver maintenant
                     </button>
                 </div>
             </div>

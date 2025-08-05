@@ -541,6 +541,9 @@
     <!-- Inclusion du modal du panier -->
     @include('partials._cart-modal')
 
+    <!-- Inclusion du nouveau modal de réservation élargi -->
+    @include('partials._order-reservation-modal')
+
 @endsection
 
 @push('styles')

@@ -66,6 +66,11 @@ Route::middleware(['auth', 'role:client,donor'])->group(function () {
     Route::delete('/cart/remove-by-data', [App\Http\Controllers\CartController::class, 'removeByData'])->name('cart.removeByData');
     Route::delete('/cart', [App\Http\Controllers\CartController::class, 'clear'])->name('cart.clear');
     Route::post('/cart/payment', [App\Http\Controllers\CartController::class, 'processPayment'])->name('cart.payment');
+    
+    // Routes pour les commandes
+    Route::post('/order', [App\Http\Controllers\OrderController::class, 'store'])->name('order.store');
+    Route::get('/orders', [App\Http\Controllers\OrderController::class, 'index'])->name('orders.index');
+    Route::get('/orders/{order}', [App\Http\Controllers\OrderController::class, 'show'])->name('orders.show');
 });
 
 // Routes pour les admins (avec dashboard)
