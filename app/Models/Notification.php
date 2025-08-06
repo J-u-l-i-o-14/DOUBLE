@@ -10,12 +10,19 @@ class Notification extends Model
     use HasFactory;
 
     protected $fillable = [
-        'user_id', 'type', 'message', 'read'
+        'user_id', 'type', 'title', 'message', 'data', 'read_at'
     ];
 
     protected $casts = [
-        'read' => 'boolean',
+        'data' => 'json',
+        'read_at' => 'datetime',
     ];
+
+    // Accesseur pour savoir si la notification est lue
+    public function getIsReadAttribute()
+    {
+        return $this->read_at !== null;
+    }
 
     public function user()
     {
@@ -25,12 +32,12 @@ class Notification extends Model
     // Scopes
     public function scopeUnread($query)
     {
-        return $query->where('read', false);
+        return $query->whereNull('read_at');
     }
 
     public function scopeRead($query)
     {
-        return $query->where('read', true);
+        return $query->whereNotNull('read_at');
     }
 
     public function scopeByType($query, $type)

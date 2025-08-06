@@ -131,4 +131,28 @@ Route::get('/test-roles', function () {
     return response()->json($roles);
 })->name('test.roles');
 
+// Route de test pour vérifier le système de commande
+Route::get('/test-system', function () {
+    try {
+        $data = [
+            'users_count' => \App\Models\User::count(),
+            'centers_count' => \App\Models\Center::count(),
+            'orders_count' => \App\Models\Order::count(),
+            'notifications_count' => \App\Models\Notification::count(),
+            'cart_items_count' => \App\Models\Cart::count(),
+            'latest_order' => \App\Models\Order::with('user', 'center')->latest()->first(),
+            'latest_notification' => \App\Models\Notification::with('user')->latest()->first(),
+            'sample_center' => \App\Models\Center::with('bloodTypeInventories.bloodType')->first()
+        ];
+        
+        return response()->json($data, 200, [], JSON_PRETTY_PRINT);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine()
+        ], 500);
+    }
+})->name('test.system');
+
 require __DIR__.'/auth.php';
