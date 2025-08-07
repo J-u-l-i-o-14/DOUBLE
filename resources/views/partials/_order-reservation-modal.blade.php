@@ -643,10 +643,31 @@ window.submitOrderReservation = function() {
     })
     .then(response => {
         console.log('Réponse commande:', response.status);
-        if (!response.ok) {
-            throw new Error(`HTTP Error: ${response.status}`);
-        }
-        return response.json();
+        console.log('Headers:', response.headers);
+        
+        // Essayer de lire le texte de la réponse même si elle n'est pas OK
+        return response.text().then(text => {
+            console.log('Contenu de la réponse:', text);
+            
+            if (!response.ok) {
+                // Essayer de parser en JSON pour voir si c'est une erreur Laravel
+                try {
+                    const errorData = JSON.parse(text);
+                    console.log('Erreur parsée:', errorData);
+                    throw new Error(errorData.message || `HTTP Error: ${response.status}`);
+                } catch (parseError) {
+                    console.log('Erreur de parsing JSON:', parseError);
+                    throw new Error(`HTTP Error ${response.status}: ${text.substring(0, 200)}`);
+                }
+            }
+            
+            try {
+                return JSON.parse(text);
+            } catch (parseError) {
+                console.log('Erreur parsing JSON succès:', parseError);
+                throw new Error('Réponse invalide du serveur');
+            }
+        });
     })
     .then(responseData => {
         console.log('Données de la commande:', responseData);

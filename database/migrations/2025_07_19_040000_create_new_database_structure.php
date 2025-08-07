@@ -239,17 +239,7 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        // 20. Table notifications
-        Schema::create('notifications', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('user_id')->constrained();
-            $table->string('type');
-            $table->text('message');
-            $table->boolean('read')->default(false);
-            $table->timestamps();
-        });
-
-        // 21. Table alerts
+        // 20. Table alerts
         Schema::create('alerts', function (Blueprint $table) {
             $table->id();
             $table->foreignId('center_id')->constrained();
@@ -265,7 +255,6 @@ return new class extends Migration
     {
         Schema::dropIfExists('center_blood_type_inventory');
         Schema::dropIfExists('alerts');
-        Schema::dropIfExists('notifications');
         Schema::dropIfExists('transfusions');
         Schema::dropIfExists('donation_histories');
         Schema::dropIfExists('campaigns');

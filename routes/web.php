@@ -52,6 +52,9 @@ Route::middleware(['auth', 'role:manager'])->group(function () {
     Route::resource('appointments', AppointmentController::class);
     Route::patch('/appointments/{appointment}/confirm', [AppointmentController::class, 'confirm'])->name('appointments.confirm');
     Route::get('/blood-bags/stock', [BloodBagController::class, 'stock'])->name('blood-bags.stock');
+    
+    // SPRINT 4: Routes pour la validation des documents par les gestionnaires
+    Route::post('/orders/{order}/validate', [App\Http\Controllers\OrderController::class, 'validateDocuments'])->name('orders.validate');
 });
 
 // Routes pour les clients et donneurs
@@ -71,6 +74,14 @@ Route::middleware(['auth', 'role:client,donor'])->group(function () {
     Route::post('/order', [App\Http\Controllers\OrderController::class, 'store'])->name('order.store');
     Route::get('/orders', [App\Http\Controllers\OrderController::class, 'index'])->name('orders.index');
     Route::get('/orders/{order}', [App\Http\Controllers\OrderController::class, 'show'])->name('orders.show');
+    
+    // SPRINT 4: Routes pour le statut en temps réel et vérification d'ordonnance
+    Route::get('/orders/{order}/status', [App\Http\Controllers\OrderController::class, 'getOrderStatus'])->name('orders.status');
+    Route::post('/check-prescription', [App\Http\Controllers\OrderController::class, 'apiCheckPrescriptionStatus'])->name('prescription.check');
+    
+    // Nouvelles routes Sprint 4
+    Route::post('/check-prescription-status', [App\Http\Controllers\OrderController::class, 'checkPrescriptionStatus'])->name('prescription.check');
+    Route::get('/orders/realtime/status', [App\Http\Controllers\OrderController::class, 'getRealTimeStatus'])->name('orders.realtime.status');
 });
 
 // Routes pour les admins (avec dashboard)
@@ -156,3 +167,69 @@ Route::get('/test-system', function () {
 })->name('test.system');
 
 require __DIR__.'/auth.php';
+
+// Route pour obtenir le token CSRF (utile pour les tests)
+Route::get('/csrf-token', function () {
+    return csrf_token();
+});
+
+// Route de test pour les notifications
+Route::get('/test-notifications', function () {
+    try {
+        $notifications = \App\Models\Notification::with('user:id,name,email,role')
+            ->orderBy('created_at', 'desc')
+            ->limit(20)
+            ->get();
+            
+        $managers = \App\Models\User::whereIn('role', ['manager', 'admin'])
+            ->select('id', 'name', 'email', 'role', 'center_id')
+            ->get();
+            
+        return response()->json([
+            'notifications_count' => $notifications->count(),
+            'notifications' => $notifications,
+            'managers_count' => $managers->count(),
+            'managers' => $managers,
+            'latest_orders' => \App\Models\Order::with('user:id,name,email', 'center:id,name')
+                ->orderBy('created_at', 'desc')
+                ->limit(5)
+                ->get()
+        ], 200, [], JSON_PRETTY_PRINT);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine()
+        ], 500);
+    }
+})->name('test.notifications');
+
+// Route de test sans middleware pour vérifier le serveur
+Route::post('/test-order-no-auth', function (Illuminate\Http\Request $request) {
+    return response()->json([
+        'success' => true,
+        'message' => 'Serveur accessible',
+        'data_received' => $request->except(['prescription_images']),
+        'files_count' => $request->hasFile('prescription_images') ? count($request->file('prescription_images')) : 0,
+        'csrf_token' => csrf_token()
+    ]);
+});
+
+// Route de test avec auth mais sans CSRF
+Route::post('/test-order-with-auth', function (Illuminate\Http\Request $request) {
+    if (!Auth::check()) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Non authentifié'
+        ], 401);
+    }
+    
+    return response()->json([
+        'success' => true,
+        'message' => 'Serveur accessible avec auth',
+        'user' => Auth::user()->only(['id', 'name', 'email']),
+        'data_received' => $request->except(['prescription_images']),
+        'files_count' => $request->hasFile('prescription_images') ? count($request->file('prescription_images')) : 0,
+        'csrf_token' => csrf_token()
+    ]);
+})->middleware('auth')->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);

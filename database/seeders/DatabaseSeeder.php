@@ -36,5 +36,10 @@ class DatabaseSeeder extends Seeder
             CenterScheduleSeeder::class,
             CenterBloodTypeInventorySeeder::class,
         ]);
+
+        // Sprint 4 - Commandes et notifications
+        $this->call([
+            Sprint4Seeder::class,
+        ]);
     }
 }

@@ -13,29 +13,35 @@ class Order extends Model
     protected $fillable = [
         'user_id',
         'center_id',
+        'blood_type',
+        'blood_type_id',
+        'quantity',
         'prescription_number',
         'phone_number',
         'prescription_image',
-        'blood_type',
-        'quantity',
-        'unit_price',
-        'total_amount',
-        'original_price',
-        'discount_amount',
+        'prescription_images',
+        'notes',
         'payment_method',
+        'total_amount',
+        'deposit_amount',
+        'remaining_amount',
         'payment_status',
         'status',
-        'notes',
+        'unit_price',
+        'original_price',
+        'discount_amount',
         'order_date',
-        'delivery_date'
+        // Nouveaux champs Sprint 4
+        'document_status',
+        'validated_by',
+        'validated_at',
+        'validation_notes'
     ];    protected $casts = [
-        'unit_price' => 'decimal:2',
-        'total_amount' => 'decimal:2',
-        'original_price' => 'decimal:2',
-        'discount_amount' => 'decimal:2',
+        'prescription_images' => 'array',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
         'order_date' => 'datetime',
-        'delivery_date' => 'datetime',
-        'prescription_image' => 'json', // Cast JSON pour les images multiples
+        'validated_at' => 'datetime',
     ];
 
     // Relations
@@ -47,6 +53,32 @@ class Order extends Model
     public function center()
     {
         return $this->belongsTo(Center::class);
+    }
+
+    public function validator()
+    {
+        return $this->belongsTo(User::class, 'validated_by');
+    }
+
+    // Scopes pour les nouveaux statuts
+    public function scopeByStatus($query, $status)
+    {
+        return $query->where('status', $status);
+    }
+
+    public function scopeDocumentPending($query)
+    {
+        return $query->where('document_status', 'pending');
+    }
+
+    public function scopeDocumentApproved($query)
+    {
+        return $query->where('document_status', 'approved');
+    }
+
+    public function scopeByPrescriptionNumber($query, $prescriptionNumber)
+    {
+        return $query->where('prescription_number', $prescriptionNumber);
     }
 
     // Scopes
@@ -106,12 +138,25 @@ class Order extends Model
         $labels = [
             'pending' => 'En attente',
             'confirmed' => 'Confirmée',
+            'processing' => 'En traitement',
             'ready' => 'Prête',
             'completed' => 'Terminée',
-            'cancelled' => 'Annulée'
+            'cancelled' => 'Annulée',
+            'expired' => 'Expirée'
         ];
 
         return $labels[$this->status] ?? $this->status;
+    }
+
+    public function getDocumentStatusLabelAttribute()
+    {
+        $labels = [
+            'pending' => 'En attente de validation',
+            'approved' => 'Documents approuvés',
+            'rejected' => 'Documents rejetés'
+        ];
+
+        return $labels[$this->document_status] ?? $this->document_status;
     }
 
     public function getPaymentStatusLabelAttribute()
@@ -187,5 +232,92 @@ class Order extends Model
     public function setTotalAmountAttribute($value)
     {
         $this->attributes['total_amount'] = $this->quantity * $this->unit_price;
+    }
+
+    // Méthodes statiques pour la gestion des ordonnances multiples
+    public static function checkPrescriptionStatus($prescriptionNumber)
+    {
+        $orders = self::where('prescription_number', $prescriptionNumber)->get();
+        
+        if ($orders->isEmpty()) {
+            return ['status' => 'new', 'message' => 'Nouvelle ordonnance'];
+        }
+        
+        // Vérifier s'il y a des commandes en cours (non terminées)
+        $pendingOrders = $orders->whereIn('status', ['pending', 'confirmed', 'processing']);
+        
+        if ($pendingOrders->isNotEmpty()) {
+            return [
+                'status' => 'in_progress', 
+                'message' => 'Ordonnance en cours, nouvelles commandes autorisées',
+                'existing_orders' => $pendingOrders->count()
+            ];
+        }
+        
+        // Toutes les commandes sont terminées
+        return [
+            'status' => 'completed', 
+            'message' => 'Ordonnance terminée, nouvelle ordonnance requise',
+            'completed_orders' => $orders->count()
+        ];
+    }
+
+    public static function canAddNewOrder($prescriptionNumber)
+    {
+        $status = self::checkPrescriptionStatus($prescriptionNumber);
+        return in_array($status['status'], ['new', 'in_progress']);
+    }
+
+    // Méthodes d'instance pour les statuts
+    public function isPending()
+    {
+        return $this->status === 'pending';
+    }
+
+    public function isConfirmed()
+    {
+        return $this->status === 'confirmed';
+    }
+
+    public function isCompleted()
+    {
+        return $this->status === 'completed';
+    }
+
+    public function isDocumentPending()
+    {
+        return $this->document_status === 'pending';
+    }
+
+    public function isDocumentApproved()
+    {
+        return $this->document_status === 'approved';
+    }
+
+    public function markAsConfirmed($validatedBy = null, $notes = null)
+    {
+        $this->update([
+            'status' => 'confirmed',
+            'document_status' => 'approved',
+            'validated_by' => $validatedBy,
+            'validated_at' => now(),
+            'validation_notes' => $notes
+        ]);
+    }
+
+    public function markAsRejected($validatedBy = null, $notes = null)
+    {
+        $this->update([
+            'status' => 'cancelled',
+            'document_status' => 'rejected',
+            'validated_by' => $validatedBy,
+            'validated_at' => now(),
+            'validation_notes' => $notes
+        ]);
+    }
+
+    public function markAsCompleted()
+    {
+        $this->update(['status' => 'completed']);
     }
 }
