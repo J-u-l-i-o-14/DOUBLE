@@ -10,11 +10,12 @@ class Alert extends Model
     use HasFactory;
 
     protected $fillable = [
-        'center_id', 'blood_type_id', 'type', 'message', 'resolved'
+        'center_id', 'blood_type_id', 'type', 'message', 'resolved', 'resolved_at', 'resolved_by'
     ];
 
     protected $casts = [
         'resolved' => 'boolean',
+        'resolved_at' => 'datetime',
     ];
 
     public function center()
@@ -25,6 +26,11 @@ class Alert extends Model
     public function bloodType()
     {
         return $this->belongsTo(BloodType::class);
+    }
+
+    public function resolvedBy()
+    {
+        return $this->belongsTo(User::class, 'resolved_by');
     }
 
     // Scopes

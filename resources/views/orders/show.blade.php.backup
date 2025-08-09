@@ -1,0 +1,497 @@
+@extends('layouts.main')
+
+@section('page-title', 'Détail de la commande #' . $order->id)
+
+@php
+use Illuminate\Support\Facades\Storage;
+@endphp
+
+@section('content')
+<div class="space-y-6">
+    <!-- En-tête avec informations principales -->
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex justify-between items-start mb-4">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">
+                    <i class="fas fa-file-medical mr-2 text-red-600"></i>
+                    Commande #{{ $order->id }}
+                </h1>
+                <p class="text-gray-600">Créée le {{ $order->created_at->format('d/m/Y à H:i') }}</p>
+                @if($order->prescription_number)
+                <p class="text-sm text-gray-500 font-mono">{{ $order->prescription_number }}</p>
+                @endif
+            </div>
+            <div class="text-right">
+                <a href="{{ route('orders.index') }}" 
+                   class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition-colors inline-flex items-center mb-2">
+                    <i class="fas fa-arrow-left mr-2"></i>Retour aux commandes
+                </a>
+                <div>
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium
+                        @if($order->status === 'pending') bg-yellow-100 text-yellow-800
+                        @elseif($order->status === 'confirmed') bg-blue-100 text-blue-800
+                        @elseif($order->status === 'ready') bg-green-100 text-green-800
+                        @elseif($order->status === 'completed') bg-gray-100 text-gray-800
+                        @elseif($order->status === 'cancelled') bg-red-100 text-red-800
+                        @else bg-gray-100 text-gray-800
+                        @endif">
+                        {{ $order->status_label }}
+                    </span>
+                    @if($order->payment_status === 'partial')
+                    <div class="mt-2">
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                            <i class="fas fa-coins mr-1"></i>Acompte payé
+                        </span>
+                    </div>
+                    @endif
+                </div>
+            </div>
+        </div>
+
+        <!-- Alertes importantes -->
+        @php
+            $delaiRetrait = $order->created_at->addHours(72);
+            $maintenant = now();
+            $expire = $maintenant->gt($delaiRetrait);
+            $heuresRestantes = $expire ? 0 : $maintenant->diffInHours($delaiRetrait);
+        @endphp
+        @if($order->status === 'pending' || $order->status === 'confirmed')
+            <div class="p-4 rounded-lg {{ $expire ? 'bg-red-50 border border-red-200' : ($heuresRestantes <= 24 ? 'bg-orange-50 border border-orange-200' : 'bg-blue-50 border border-blue-200') }}">
+                <div class="flex items-center">
+                    <i class="fas fa-clock mr-2 {{ $expire ? 'text-red-600' : ($heuresRestantes <= 24 ? 'text-orange-600' : 'text-blue-600') }}"></i>
+                    <div>
+                        @if($expire)
+                            <p class="text-red-800 font-medium">⚠️ Délai de retrait expiré</p>
+                            <p class="text-red-700 text-sm">Le délai de 72h pour le retrait a été dépassé. Contactez le centre.</p>
+                        @else
+                            <p class="{{ $heuresRestantes <= 24 ? 'text-orange-800' : 'text-blue-800' }} font-medium">
+                                Délai de retrait : {{ $heuresRestantes }}h restantes
+                            </p>
+                            <p class="{{ $heuresRestantes <= 24 ? 'text-orange-700' : 'text-blue-700' }} text-sm">
+                                Limite: {{ $delaiRetrait->format('d/m/Y à H:i') }}
+                            </p>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        @endif
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Informations médicales -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">
+                <i class="fas fa-notes-medical mr-2 text-red-600"></i>Informations Médicales
+            </h2>
+            <div class="space-y-4">
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Numéro d'ordonnance</label>
+                    <p class="text-gray-900 font-mono">{{ $order->prescription_number }}</p>
+                </div>
+                @if($order->doctor_name)
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Médecin prescripteur</label>
+                    <p class="text-gray-900">
+                        <i class="fas fa-user-md mr-1 text-green-600"></i>
+                        Dr. {{ $order->doctor_name }}
+                    </p>
+                </div>
+                @endif
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Groupe sanguin</label>
+                    <p class="text-red-600 font-bold text-lg">
+                        <i class="fas fa-tint mr-1"></i>{{ $order->blood_type }}
+                    </p>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Quantité demandée</label>
+                    <p class="text-gray-900">
+                        <i class="fas fa-vial mr-1 text-blue-600"></i>
+                        {{ $order->quantity }} poche(s)
+                    </p>
+                </div>
+                @if($order->phone_number)
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Téléphone de contact</label>
+                    <p class="text-gray-900">
+                        <i class="fas fa-phone mr-1 text-purple-600"></i>
+                        {{ $order->phone_number }}
+                    </p>
+                </div>
+                @endif
+                @if($order->notes)
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Notes médicales</label>
+                    <p class="text-gray-900 bg-gray-50 p-3 rounded-md">{{ $order->notes }}</p>
+                </div>
+                @endif
+            </div>
+        </div>
+
+        <!-- Centre de collecte -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">
+                <i class="fas fa-hospital mr-2 text-purple-600"></i>Centre de Collecte
+            </h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Nom du centre</label>
+                    <p class="text-gray-900 font-medium">{{ $order->center->name }}</p>
+                </div>
+                @if($order->center->region)
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Région</label>
+                    <p class="text-gray-900">
+                        <i class="fas fa-map-marker-alt mr-1 text-red-600"></i>
+                        {{ $order->center->region->name }}
+                    </p>
+                </div>
+                @endif
+                @if($order->center->address)
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Adresse</label>
+                    <p class="text-gray-900">{{ $order->center->address }}</p>
+                </div>
+                @endif
+                @if($order->center->phone)
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Téléphone du centre</label>
+                    <p class="text-gray-900">
+                        <i class="fas fa-phone mr-1 text-green-600"></i>
+                        {{ $order->center->phone }}
+                    </p>
+                </div>
+                @endif
+            </div>
+        </div>
+    </div>
+
+    <!-- Informations financières détaillées -->
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">
+            <i class="fas fa-money-bill-wave mr-2 text-green-600"></i>Détails Financiers
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="space-y-4">
+                @if($order->original_price)
+                <div class="bg-blue-50 p-4 rounded-lg">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-sm font-medium text-blue-800">Prix unitaire</span>
+                        <span class="text-blue-900">{{ number_format($order->unit_price ?? 5000, 0, ',', ' ') }} F CFA</span>
+                    </div>
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-sm font-medium text-blue-800">Quantité</span>
+                        <span class="text-blue-900">{{ $order->quantity }} poche(s)</span>
+                    </div>
+                    <div class="border-t border-blue-200 pt-2">
+                        <div class="flex justify-between items-center">
+                            <span class="font-medium text-blue-800">Prix total</span>
+                            <span class="font-bold text-blue-900">{{ $order->formatted_original_price }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                @if($order->original_price > $order->total_amount)
+                <!-- Paiement partiel -->
+                <div class="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                    <h4 class="font-medium text-yellow-800 mb-3">
+                        <i class="fas fa-exclamation-triangle mr-1"></i>
+                        Paiement partiel (Acompte de 50%)
+                    </h4>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-yellow-700">Acompte payé:</span>
+                            <span class="font-medium text-yellow-900">{{ number_format($order->total_amount, 0, ',', ' ') }} F CFA</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-yellow-700">Reste à payer:</span>
+                            <span class="font-medium text-orange-600">{{ number_format($order->original_price - $order->total_amount, 0, ',', ' ') }} F CFA</span>
+                        </div>
+                        <div class="text-xs text-yellow-600 mt-2">
+                            Le solde sera payé lors du retrait des poches de sang.
+                        </div>
+                    </div>
+                </div>
+                @else
+                <!-- Paiement complet -->
+                <div class="bg-green-50 p-4 rounded-lg border border-green-200">
+                    <h4 class="font-medium text-green-800 mb-2">
+                        <i class="fas fa-check-circle mr-1"></i>
+                        Paiement complet
+                    </h4>
+                    <div class="text-sm text-green-700">
+                        Total payé: <span class="font-medium">{{ $order->formatted_total }}</span>
+                    </div>
+                </div>
+                @endif
+                @endif
+            </div>
+
+            <!-- Détails de paiement -->
+            @if($order->payment_method)
+            <div class="space-y-4">
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <h4 class="font-medium text-gray-800 mb-3">
+                        <i class="fas fa-credit-card mr-1"></i>
+                        Informations de paiement
+                    </h4>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Méthode:</span>
+                            <span class="text-gray-900">{{ $order->payment_method_label }}</span>
+                        </div>
+                        @if($order->payment_reference)
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Référence:</span>
+                            <span class="text-gray-900 font-mono">{{ $order->payment_reference }}</span>
+                        </div>
+                        @endif
+                        @if($order->transaction_id)
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">ID Transaction:</span>
+                            <span class="text-gray-900 font-mono">{{ $order->transaction_id }}</span>
+                        </div>
+                        @endif
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Statut:</span>
+                            <span class="text-gray-900">{{ $order->payment_status_label }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Date:</span>
+                            <span class="text-gray-900">{{ $order->created_at->format('d/m/Y H:i') }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            @endif
+        </div>
+    </div>
+                                <dt class="text-sm font-medium text-gray-500">Solde restant</dt>
+                                <dd class="text-sm text-orange-600 font-medium">{{ number_format($order->original_price - $order->total_amount, 0, ',', ' ') }} F CFA</dd>
+                            </div>
+                            @endif
+                            <div>
+                                <dt class="text-sm font-medium text-gray-500">Montant payé</dt>
+                                <dd class="text-lg font-bold text-red-600">{{ $order->formatted_total }}</dd>
+                            </div>
+                            @if($order->payment_method)
+                            <div>
+                                <dt class="text-sm font-medium text-gray-500">Moyen de paiement</dt>
+                                <dd class="text-sm text-gray-900">{{ $order->payment_method_label }}</dd>
+                            </div>
+                            @endif
+    <!-- Documents attachés -->
+    @if($order->prescription_image || $order->prescription_images)
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">
+            <i class="fas fa-paperclip mr-2 text-blue-600"></i>Documents Attachés
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            @if($order->prescription_image)
+            <div class="bg-gray-50 p-4 rounded-lg">
+                <h4 class="font-medium text-gray-800 mb-2">
+                    <i class="fas fa-file-medical mr-1"></i>Ordonnance principale
+                </h4>
+                <img src="{{ Storage::url($order->prescription_image) }}" 
+                     alt="Ordonnance médicale" 
+                     class="w-full h-32 object-cover rounded border cursor-pointer hover:opacity-75 transition-opacity"
+                     onclick="openImageModal(this.src, 'Ordonnance principale')">
+                <p class="text-xs text-gray-500 text-center mt-2">Cliquer pour agrandir</p>
+            </div>
+            @endif
+
+            @if($order->prescription_images)
+                @php
+                    $images = is_string($order->prescription_images) ? json_decode($order->prescription_images, true) : $order->prescription_images;
+                @endphp
+                @if(is_array($images))
+                    @foreach($images as $index => $image)
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <h4 class="font-medium text-gray-800 mb-2">
+                            <i class="fas fa-file-image mr-1"></i>Document {{ $index + 1 }}
+                        </h4>
+                        <img src="{{ Storage::url($image) }}" 
+                             alt="Document {{ $index + 1 }}" 
+                             class="w-full h-32 object-cover rounded border cursor-pointer hover:opacity-75 transition-opacity"
+                             onclick="openImageModal(this.src, 'Document {{ $index + 1 }}')">
+                        <p class="text-xs text-gray-500 text-center mt-2">Cliquer pour agrandir</p>
+                    </div>
+                    @endforeach
+                @endif
+            @endif
+        </div>
+    </div>
+    @endif
+
+    <!-- Chronologie et actions -->
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">
+            <i class="fas fa-history mr-2 text-gray-600"></i>Suivi de la Commande
+        </h2>
+        
+        <!-- Chronologie -->
+        <div class="space-y-4 mb-6">
+            <div class="flex items-start">
+                <div class="flex-shrink-0 w-3 h-3 bg-green-500 rounded-full mt-1"></div>
+                <div class="ml-4">
+                    <h4 class="font-medium text-gray-900">Commande créée</h4>
+                    <p class="text-sm text-gray-600">{{ $order->created_at->format('d/m/Y à H:i') }}</p>
+                    <p class="text-xs text-gray-500">Votre demande a été enregistrée avec succès</p>
+                </div>
+            </div>
+            
+            @if($order->status !== 'pending')
+            <div class="flex items-start">
+                <div class="flex-shrink-0 w-3 h-3 bg-blue-500 rounded-full mt-1"></div>
+                <div class="ml-4">
+                    <h4 class="font-medium text-gray-900">Commande confirmée</h4>
+                    <p class="text-sm text-gray-600">Confirmée par le centre</p>
+                    <p class="text-xs text-gray-500">Les poches de sang ont été réservées</p>
+                </div>
+            </div>
+            @endif
+
+            @if(in_array($order->status, ['ready', 'completed']))
+            <div class="flex items-start">
+                <div class="flex-shrink-0 w-3 h-3 bg-yellow-500 rounded-full mt-1"></div>
+                <div class="ml-4">
+                    <h4 class="font-medium text-gray-900">Commande prête</h4>
+                    <p class="text-sm text-gray-600">Prête pour le retrait</p>
+                    <p class="text-xs text-gray-500">Vous pouvez venir récupérer vos poches</p>
+                </div>
+            </div>
+            @endif
+
+            @if($order->status === 'completed')
+            <div class="flex items-start">
+                <div class="flex-shrink-0 w-3 h-3 bg-gray-500 rounded-full mt-1"></div>
+                <div class="ml-4">
+                    <h4 class="font-medium text-gray-900">Commande terminée</h4>
+                    <p class="text-sm text-gray-600">Retrait effectué</p>
+                    <p class="text-xs text-gray-500">Merci pour votre confiance</p>
+                </div>
+            </div>
+            @endif
+
+            @if($order->status === 'cancelled')
+            <div class="flex items-start">
+                <div class="flex-shrink-0 w-3 h-3 bg-red-500 rounded-full mt-1"></div>
+                <div class="ml-4">
+                    <h4 class="font-medium text-gray-900">Commande annulée</h4>
+                    <p class="text-sm text-gray-600">Commande annulée</p>
+                    <p class="text-xs text-red-500">Cette commande a été annulée</p>
+                </div>
+            </div>
+            @endif
+        </div>
+
+        <!-- Messages d'aide -->
+        <div class="bg-gray-50 p-4 rounded-lg">
+            @if($order->status === 'pending')
+                <div class="flex items-start">
+                    <i class="fas fa-info-circle text-blue-500 mt-1 mr-2"></i>
+                    <div>
+                        <p class="text-sm text-gray-800 font-medium">Commande en attente</p>
+                        <p class="text-sm text-gray-600">Votre commande est en cours de traitement par le centre. Vous recevrez une notification dès qu'elle sera confirmée.</p>
+                    </div>
+                </div>
+            @elseif($order->status === 'confirmed')
+                <div class="flex items-start">
+                    <i class="fas fa-check-circle text-green-500 mt-1 mr-2"></i>
+                    <div>
+                        <p class="text-sm text-gray-800 font-medium">Commande confirmée</p>
+                        <p class="text-sm text-gray-600">Votre commande a été confirmée. Le centre vous contactera pour planifier le retrait.</p>
+                    </div>
+                </div>
+            @elseif($order->status === 'ready')
+                <div class="flex items-start">
+                    <i class="fas fa-exclamation-triangle text-yellow-500 mt-1 mr-2"></i>
+                    <div>
+                        <p class="text-sm text-gray-800 font-medium">Prêt pour le retrait</p>
+                        <p class="text-sm text-gray-600">Vos poches de sang sont prêtes ! Rendez-vous au centre dans les meilleurs délais.</p>
+                        @if($order->original_price > $order->total_amount)
+                        <p class="text-sm text-orange-600 mt-1">N'oubliez pas d'apporter le solde de {{ number_format($order->original_price - $order->total_amount, 0, ',', ' ') }} F CFA.</p>
+                        @endif
+                    </div>
+                </div>
+            @elseif($order->status === 'completed')
+                <div class="flex items-start">
+                    <i class="fas fa-check-circle text-gray-500 mt-1 mr-2"></i>
+                    <div>
+                        <p class="text-sm text-gray-800 font-medium">Commande terminée</p>
+                        <p class="text-sm text-gray-600">Merci d'avoir utilisé notre service. Nous espérons vous revoir bientôt.</p>
+                    </div>
+                </div>
+            @elseif($order->status === 'cancelled')
+                <div class="flex items-start">
+                    <i class="fas fa-times-circle text-red-500 mt-1 mr-2"></i>
+                    <div>
+                        <p class="text-sm text-gray-800 font-medium">Commande annulée</p>
+                        <p class="text-sm text-gray-600">Cette commande a été annulée. Si vous avez des questions, contactez le support.</p>
+                    </div>
+                </div>
+            @endif
+        </div>
+
+        <!-- Actions disponibles -->
+        @if($order->status === 'pending')
+        <div class="mt-4 pt-4 border-t border-gray-200">
+            <div class="flex justify-between items-center">
+                <div class="text-sm text-gray-600">
+                    <i class="fas fa-clock mr-1"></i>
+                    Actions disponibles
+                </div>
+                <button onclick="confirmCancelOrder()" 
+                        class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                    <i class="fas fa-times mr-2"></i>Annuler la commande
+                </button>
+            </div>
+        </div>
+        @endif
+    </div>
+</div>
+
+<!-- Modal pour afficher les images -->
+<div id="imageModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden" onclick="closeImageModal()">
+    <div class="max-w-4xl max-h-full p-4 relative">
+        <div class="bg-white rounded-lg p-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="modalTitle" class="text-lg font-semibold text-gray-900"></h3>
+                <button onclick="closeImageModal()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <img id="modalImage" src="" alt="" class="max-w-full max-h-96 object-contain mx-auto rounded">
+        </div>
+    </div>
+</div>
+
+<script>
+function openImageModal(imageSrc, title) {
+    document.getElementById('modalImage').src = imageSrc;
+    document.getElementById('modalTitle').textContent = title;
+    document.getElementById('imageModal').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeImageModal() {
+    document.getElementById('imageModal').classList.add('hidden');
+    document.body.style.overflow = '';
+}
+
+function confirmCancelOrder() {
+    if (confirm('Êtes-vous sûr de vouloir annuler cette commande ?')) {
+        // Ici vous pouvez ajouter la logique pour annuler la commande
+        alert('Fonctionnalité d\'annulation à implémenter');
+    }
+}
+
+// Fermer le modal avec Escape
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeImageModal();
+    }
+});
+</script>
+@endsection

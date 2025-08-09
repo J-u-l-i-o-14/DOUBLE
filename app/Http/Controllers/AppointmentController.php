@@ -41,16 +41,21 @@ class AppointmentController extends Controller
     {
         $user = auth()->user();
         $request->validate([
-            'appointment_date' => 'required|date|after:now',
+            'appointment_date' => 'required|date|after:tomorrow',
+            'appointment_time' => 'required|string',
             'type' => 'required|in:centre,campagne',
             'campaign_id' => 'required_if:type,campagne|exists:campaigns,id',
             'notes' => 'nullable|string|max:500',
         ]);
         $centerId = $user->center_id;
+        
+        // Combiner date et heure
+        $appointmentDateTime = $request->appointment_date . ' ' . $request->appointment_time;
+        
         $appointment = Appointment::create([
             'donor_id' => $user->id,
             'center_id' => $centerId,
-            'appointment_date' => $request->appointment_date,
+            'appointment_date' => $appointmentDateTime,
             'type' => $request->type,
             'campaign_id' => $request->type === 'campagne' ? $request->campaign_id : null,
             'notes' => $request->notes,

@@ -158,6 +158,9 @@ class OrderController extends Controller
 
                 $orders[] = $order;
 
+                // Créer automatiquement la ReservationRequest correspondante
+                $order->createReservationRequest();
+
                 // Décrémenter le stock
                 $inventory->decrement('available_quantity', $cartItem->quantity);
 
@@ -231,7 +234,7 @@ class OrderController extends Controller
         }
 
         $orders = Order::where('user_id', Auth::id())
-            ->with('center')
+            ->with(['center.region', 'reservationRequest.items.bloodType'])
             ->orderBy('created_at', 'desc')
             ->paginate(10);
 
@@ -247,6 +250,13 @@ class OrderController extends Controller
         if ($order->user_id !== Auth::id() && !Auth::user()->can_manage_center) {
             abort(403);
         }
+
+        // Charger les relations nécessaires
+        $order->load([
+            'reservationRequest.items.bloodType',
+            'center.region',
+            'user'
+        ]);
 
         return view('orders.show', compact('order'));
     }
@@ -393,6 +403,14 @@ class OrderController extends Controller
         try {
             $oldStatus = $order->status;
             $order->update(['status' => $request->status]);
+
+            // Si le statut devient "completed", mettre à jour le payment_status à "paid"
+            if ($request->status === 'completed' && $order->payment_status === 'partial') {
+                $order->update([
+                    'payment_status' => 'paid',
+                    'payment_completed_at' => now()
+                ]);
+            }
 
             // Créer une notification pour le client
             Notification::create([

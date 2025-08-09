@@ -1,0 +1,205 @@
+===============================================
+   SCÉNARIOS DE TEST SPRINT 4 - INTERFACE WEB
+===============================================
+
+📋 OBJECTIF : Tester la gestion des ordonnances multiples et des statuts de documents
+
+🚀 PRÉREQUIS :
+- Serveur Laravel démarré : php artisan serve
+- Base de données migrée
+- Au moins un utilisateur client et un administrateur
+
+===============================================
+📝 SCÉNARIO 1 : NOUVELLE ORDONNANCE (PREMIÈRE FOIS)
+===============================================
+
+🎯 Objectif : Vérifier qu'une nouvelle ordonnance peut être créée
+
+📍 Étapes :
+1. Aller sur : http://127.0.0.1:8000/blood/reservation
+2. Se connecter en tant que client
+3. Remplir le formulaire :
+   - Numéro d'ordonnance : ORD-TEST-001
+   - Groupe sanguin : A+
+   - Quantité : 2 poches
+   - Téléphone : 70123456
+   - Image d'ordonnance : Uploader une image
+4. Cliquer sur "Réserver"
+5. Procéder au paiement
+
+✅ Résultats attendus :
+- Commande créée avec succès
+- Redirection vers le dashboard client
+- Statut commande : "En attente"
+- Statut document : "En attente de validation"
+- Message de confirmation affiché
+
+===============================================
+📝 SCÉNARIO 2 : MÊME ORDONNANCE - COMMANDE ADDITIONNELLE
+===============================================
+
+🎯 Objectif : Vérifier qu'on peut ajouter une commande à une ordonnance en cours
+
+📍 Étapes :
+1. Retourner sur : http://127.0.0.1:8000/blood/reservation
+2. Utiliser le MÊME numéro d'ordonnance :
+   - Numéro d'ordonnance : ORD-TEST-001 (identique au scénario 1)
+   - Groupe sanguin : B+ (différent)
+   - Quantité : 1 poche
+   - Téléphone : 70123456
+3. Cliquer sur "Réserver"
+4. Procéder au paiement
+
+✅ Résultats attendus :
+- Deuxième commande créée avec succès
+- Pas de message d'erreur
+- Les deux commandes existent pour la même ordonnance
+- Dashboard affiche les deux commandes
+- Système reconnaît que l'ordonnance est "en cours"
+
+===============================================
+📝 SCÉNARIO 3 : VALIDATION ADMINISTRATIVE
+===============================================
+
+🎯 Objectif : Tester la validation des documents par l'administrateur
+
+📍 Étapes :
+1. Se connecter en tant qu'administrateur
+2. Aller sur le dashboard admin
+3. Section "Commandes en attente"
+4. Trouver les commandes avec ordonnance "ORD-TEST-001"
+5. Cliquer sur "Valider" pour la première commande :
+   - Ajouter des notes : "Documents conformes - Validation test"
+   - Confirmer la validation
+6. Répéter pour la deuxième commande
+
+✅ Résultats attendus :
+- Statut commande passe à "Confirmée"
+- Statut document passe à "Approuvé"
+- Date de validation enregistrée
+- Notes de validation sauvegardées
+- Nom du validateur enregistré
+
+===============================================
+📝 SCÉNARIO 4 : TERMINER LES COMMANDES
+===============================================
+
+🎯 Objectif : Marquer les commandes comme terminées
+
+📍 Étapes :
+1. Rester connecté en tant qu'administrateur
+2. Dans la liste des commandes confirmées
+3. Marquer les deux commandes "ORD-TEST-001" comme "Terminées"
+4. Ajouter des notes de finalisation
+
+✅ Résultats attendus :
+- Statut commande passe à "Terminée"
+- Commandes n'apparaissent plus dans les tâches en cours
+- Historique des commandes mis à jour
+
+===============================================
+📝 SCÉNARIO 5 : ORDONNANCE TERMINÉE - BLOCAGE
+===============================================
+
+🎯 Objectif : Vérifier le blocage des nouvelles commandes sur ordonnance terminée
+
+📍 Étapes :
+1. Se reconnecter en tant que client
+2. Aller sur : http://127.0.0.1:8000/blood/reservation
+3. Essayer de créer une nouvelle commande :
+   - Numéro d'ordonnance : ORD-TEST-001 (même que précédemment)
+   - Groupe sanguin : O+
+   - Quantité : 1 poche
+4. Cliquer sur "Réserver"
+
+❌ Résultats attendus :
+- Message d'erreur : "Ordonnance terminée, nouvelle ordonnance requise"
+- Commande NON créée
+- Redirection ou message explicatif
+- Suggestion d'utiliser un nouveau numéro d'ordonnance
+
+===============================================
+📝 SCÉNARIO 6 : NOUVELLE ORDONNANCE APRÈS TERMINAISON
+===============================================
+
+🎯 Objectif : Vérifier qu'une nouvelle ordonnance fonctionne après une terminée
+
+📍 Étapes :
+1. Rester sur la page de réservation
+2. Utiliser un NOUVEAU numéro :
+   - Numéro d'ordonnance : ORD-TEST-002
+   - Groupe sanguin : AB+
+   - Quantité : 1 poche
+3. Cliquer sur "Réserver"
+
+✅ Résultats attendus :
+- Nouvelle commande créée avec succès
+- Système traite comme nouvelle ordonnance
+- Pas de conflit avec l'ancienne ordonnance
+
+===============================================
+📝 SCÉNARIO 7 : REJET DE DOCUMENTS
+===============================================
+
+🎯 Objectif : Tester le rejet de documents par l'administrateur
+
+📍 Étapes :
+1. Se connecter en tant qu'administrateur
+2. Trouver la commande "ORD-TEST-002"
+3. Cliquer sur "Rejeter" :
+   - Ajouter des notes : "Documents non conformes - Qualité insuffisante"
+   - Confirmer le rejet
+
+✅ Résultats attendus :
+- Statut commande passe à "Annulée"
+- Statut document passe à "Rejeté"
+- Notes de rejet enregistrées
+- Client notifié du rejet
+
+===============================================
+🔍 POINTS DE VÉRIFICATION TECHNIQUES
+===============================================
+
+📊 Base de données :
+- Table orders : Vérifier les champs document_status, validated_by, validated_at
+- Historique des modifications de statut
+- Intégrité des données de prescription_number
+
+📱 Interface utilisateur :
+- Messages d'erreur clairs et en français
+- Transitions de statut visuelles
+- Notifications appropriées
+- Responsive design
+
+🔐 Sécurité :
+- Validation des permissions (client vs admin)
+- Vérification des données d'entrée
+- Protection contre les actions non autorisées
+
+===============================================
+🎯 CRITÈRES DE SUCCÈS
+===============================================
+
+✅ Fonctionnalités Sprint 4 validées si :
+1. ✅ Ordonnances multiples gérées correctement
+2. ✅ Statuts de documents fonctionnels
+3. ✅ Blocage des ordonnances terminées
+4. ✅ Validation/rejet administratif opérationnel
+5. ✅ Interface utilisateur claire et intuitive
+6. ✅ Données correctement persistées
+7. ✅ Aucune régression sur les fonctionnalités existantes
+
+===============================================
+📞 CONTACTS POUR SUPPORT
+===============================================
+
+🐛 En cas de bug : Vérifier les logs Laravel (storage/logs/)
+🔧 Commande de debug : php artisan tinker
+📋 Test automatique : php test_sprint4.php
+
+===============================================
+📅 Document créé le : 07 Août 2025
+🏷️  Version : Sprint 4 - Gestion ordonnances multiples
+👤  Testeur : ___________________
+📝  Notes additionnelles : ___________________
+===============================================

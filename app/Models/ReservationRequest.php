@@ -11,8 +11,8 @@ class ReservationRequest extends Model
     use HasFactory;
 
     protected $fillable = [
-        'user_id', 'center_id', 'status', 'total_amount', 'paid_amount',
-        'document_path', 'expires_at'
+        'order_id', 'user_id', 'center_id', 'status', 'total_amount', 'paid_amount',
+        'document_path', 'expires_at', 'manager_notes', 'updated_by'
     ];
 
     protected $casts = [
@@ -24,6 +24,11 @@ class ReservationRequest extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function order()
+    {
+        return $this->belongsTo(Order::class);
     }
 
     public function center()
@@ -54,6 +59,11 @@ class ReservationRequest extends Model
     public function documents()
     {
         return $this->hasMany(Document::class, 'reservation_id');
+    }
+
+    public function updatedBy()
+    {
+        return $this->belongsTo(User::class, 'updated_by');
     }
 
     // Scopes
@@ -117,5 +127,36 @@ class ReservationRequest extends Model
     {
         if ($this->total_amount == 0) return 100;
         return ($this->paid_amount / $this->total_amount) * 100;
+    }
+
+    public function getStatusLabelAttribute()
+    {
+        $labels = [
+            'pending' => 'En attente',
+            'confirmed' => 'Confirmée',
+            'cancelled' => 'Annulée',
+            'completed' => 'Terminée',
+            'expired' => 'Expirée'
+        ];
+
+        return $labels[$this->status] ?? ucfirst($this->status);
+    }
+
+    public function getStatusColorAttribute()
+    {
+        $colors = [
+            'pending' => 'info',
+            'confirmed' => 'success',
+            'cancelled' => 'danger',
+            'completed' => 'primary',
+            'expired' => 'secondary'
+        ];
+
+        return $colors[$this->status] ?? 'secondary';
+    }
+
+    public function canBeUpdated()
+    {
+        return in_array($this->status, ['pending', 'confirmed']);
     }
 } 

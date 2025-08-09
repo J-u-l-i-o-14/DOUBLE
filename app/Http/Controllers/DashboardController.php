@@ -30,48 +30,128 @@ class DashboardController extends Controller
             case 'manager':
                 return $this->managerDashboard();
             case 'client':
+            case 'patient':
                 return $this->clientDashboard();
             default:
                 return redirect()->route('login');
         }
     }
 
+    // Dashboard client accessible uniquement pour les clients, donneurs et patients
+    public function clientReservationDashboard()
+    {
+        $user = Auth::user();
+        
+        // Vérifier que seuls les clients, donneurs et patients peuvent accéder
+        if (!in_array($user->role, ['client', 'donor', 'patient'])) {
+            return redirect()->route('dashboard')->with('error', 'Accès non autorisé.');
+        }
+        
+        return $this->clientDashboard();
+    }
+
     private function adminDashboard()
     {
         $user = Auth::user();
+        
+        // Pour les admins, montrer les stats de tous les centres ou du centre spécifique
+        $centerFilter = $user->center_id; // Admins peuvent voir leur centre ou tous
+        
         // Statistiques générales
         $stats = [
-            'total_donors' => User::donors()->where('center_id', $user->center_id)->count(),
-            'total_blood_bags' => BloodBag::available()->where('center_id', $user->center_id)->count(),
-            'total_donations_this_month' => DonationHistory::thisMonth()->whereHas('donor', function($q) use ($user) { $q->where('center_id', $user->center_id); })->count(),
-            'total_transfusions_this_month' => Transfusion::thisMonth()->whereHas('bloodBag', function($q) use ($user) { $q->where('center_id', $user->center_id); })->count(),
-            'upcoming_campaigns' => Campaign::upcoming()->where('center_id', $user->center_id)->count(),
-            'pending_appointments' => Appointment::pending()->where('center_id', $user->center_id)->count(),
+            'total_donors' => User::donors()->when($centerFilter, function($q) use ($centerFilter) { 
+                return $q->where('center_id', $centerFilter); 
+            })->count(),
+            'total_blood_bags' => BloodBag::available()->when($centerFilter, function($q) use ($centerFilter) { 
+                return $q->where('center_id', $centerFilter); 
+            })->count(),
+            'total_donations_this_month' => DonationHistory::thisMonth()->when($centerFilter, function($q) use ($centerFilter) {
+                return $q->whereHas('donor', function($query) use ($centerFilter) { 
+                    $query->where('center_id', $centerFilter); 
+                });
+            })->count(),
+            'total_transfusions_this_month' => Transfusion::thisMonth()->when($centerFilter, function($q) use ($centerFilter) {
+                return $q->whereHas('bloodBag', function($query) use ($centerFilter) { 
+                    $query->where('center_id', $centerFilter); 
+                });
+            })->count(),
+            'upcoming_campaigns' => Campaign::upcoming()->when($centerFilter, function($q) use ($centerFilter) { 
+                return $q->where('center_id', $centerFilter); 
+            })->count(),
+            'pending_appointments' => Appointment::pending()->when($centerFilter, function($q) use ($centerFilter) { 
+                return $q->where('center_id', $centerFilter); 
+            })->count(),
+            // Statistiques financières basées sur les vrais mouvements de transaction
+            'total_revenue' => \App\Models\ReservationRequest::when($centerFilter, function($q) use ($centerFilter) { 
+                return $q->where('center_id', $centerFilter); 
+            })
+                ->whereHas('order')
+                ->with('order')
+                ->get()
+                ->sum(function($reservation) {
+                    if ($reservation->order) {
+                        // Compter seulement ce qui est effectivement payé
+                        return $reservation->order->total_amount;
+                    }
+                    return 0;
+                }),
+            'monthly_revenue' => \App\Models\ReservationRequest::when($centerFilter, function($q) use ($centerFilter) { 
+                return $q->where('center_id', $centerFilter); 
+            })
+                ->whereMonth('created_at', now()->month)
+                ->whereYear('created_at', now()->year)
+                ->whereHas('order')
+                ->with('order')
+                ->get()
+                ->sum(function($reservation) {
+                    if ($reservation->order) {
+                        // Compter seulement ce qui est effectivement payé ce mois
+                        return $reservation->order->total_amount;
+                    }
+                    return 0;
+                }),
+            'pending_revenue' => \App\Models\ReservationRequest::when($centerFilter, function($q) use ($centerFilter) { 
+                return $q->where('center_id', $centerFilter); 
+            })
+                ->whereIn('status', ['pending', 'confirmed'])
+                ->whereHas('order', function($q) {
+                    $q->where('payment_status', 'partial');
+                })
+                ->with('order')
+                ->get()
+                ->sum(function($reservation) {
+                    if ($reservation->order) {
+                        return $reservation->order->original_price - $reservation->order->total_amount;
+                    }
+                    return 0;
+                }),
         ];
 
         // Alertes critiques
         $alerts = [
-            'expired_bags' => BloodBag::expired()->where('center_id', $user->center_id)->count(),
-            'expiring_soon_bags' => BloodBag::expiringSoon()->where('center_id', $user->center_id)->count(),
-            'low_stock_types' => $this->getLowStockBloodTypes($user->center_id),
-            'active_alerts' => \App\Models\Alert::where('center_id', $user->center_id)->where('resolved', false)->latest()->get(),
+            'expired_bags' => BloodBag::expired()->when($centerFilter, function($q) use ($centerFilter) { 
+                return $q->where('center_id', $centerFilter); 
+            })->count(),
+            'expiring_soon_bags' => BloodBag::expiringSoon()->when($centerFilter, function($q) use ($centerFilter) { 
+                return $q->where('center_id', $centerFilter); 
+            })->count(),
+            'low_stock_types' => $this->getLowStockBloodTypes($centerFilter),
+            'active_alerts' => \App\Models\Alert::when($centerFilter, function($q) use ($centerFilter) { 
+                return $q->where('center_id', $centerFilter); 
+            })->where('resolved', false)->latest()->get(),
         ];
 
-        // Stock par groupe sanguin
-        $stockByBloodType = BloodBag::available()
-            ->where('center_id', $user->center_id)
-            ->join('blood_types', 'blood_bags.blood_type_id', '=', 'blood_types.id')
-            ->selectRaw('blood_types.group, COUNT(*) as count')
-            ->groupBy('blood_types.group')
-            ->pluck('count', 'blood_types.group')
-            ->toArray();
-
         // Dons par mois (6 derniers mois)
-        $donationsChart = $this->getDonationsChartData($user->center_id);
+        $donationsChart = $this->getDonationsChartData($centerFilter);
+        
+        // Chiffre d'affaires par mois (6 derniers mois) - Sprint 5
+        $revenueChart = $this->getRevenueChartData($centerFilter);
 
         // Prochaines campagnes
         $upcomingCampaigns = Campaign::upcoming()
-            ->where('center_id', $user->center_id)
+            ->when($centerFilter, function($q) use ($centerFilter) { 
+                return $q->where('center_id', $centerFilter); 
+            })
             ->with('organizer')
             ->orderBy('date')
             ->limit(5)
@@ -79,7 +159,18 @@ class DashboardController extends Controller
 
         // Rendez-vous récents
         $recentAppointments = Appointment::with(['donor', 'campaign'])
-            ->where('center_id', $user->center_id)
+            ->when($centerFilter, function($q) use ($centerFilter) { 
+                return $q->where('center_id', $centerFilter); 
+            })
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get();
+
+        // Transactions financières récentes - Sprint 5
+        $recentTransactions = \App\Models\Order::with(['user'])
+            ->when($centerFilter, function($q) use ($centerFilter) { 
+                return $q->where('center_id', $centerFilter); 
+            })
             ->orderBy('created_at', 'desc')
             ->limit(10)
             ->get();
@@ -87,10 +178,11 @@ class DashboardController extends Controller
         return view('dashboard.admin', compact(
             'stats', 
             'alerts', 
-            'stockByBloodType', 
-            'donationsChart', 
+            'donationsChart',
+            'revenueChart',
             'upcomingCampaigns',
-            'recentAppointments'
+            'recentAppointments',
+            'recentTransactions'
         ));
     }
 
@@ -104,6 +196,50 @@ class DashboardController extends Controller
             'pending_appointments' => Appointment::pending()->where('center_id', $user->center_id)->count(),
             'total_donors' => User::donors()->where('center_id', $user->center_id)->count(),
             'total_blood_bags' => BloodBag::available()->where('center_id', $user->center_id)->count(),
+            // Statistiques des réservations
+            'total_reservations' => \App\Models\ReservationRequest::where('center_id', $user->center_id)->count(),
+            'pending_reservations' => \App\Models\ReservationRequest::where('center_id', $user->center_id)
+                ->where('status', 'pending')->count(),
+            'confirmed_reservations' => \App\Models\ReservationRequest::where('center_id', $user->center_id)
+                ->where('status', 'confirmed')->count(),
+            // Statistiques financières basées sur les vrais mouvements de transaction
+            'total_revenue' => \App\Models\ReservationRequest::where('center_id', $user->center_id)
+                ->whereHas('order')
+                ->with('order')
+                ->get()
+                ->sum(function($reservation) {
+                    if ($reservation->order) {
+                        // Compter seulement ce qui est effectivement payé
+                        return $reservation->order->total_amount;
+                    }
+                    return 0;
+                }),
+            'monthly_revenue' => \App\Models\ReservationRequest::where('center_id', $user->center_id)
+                ->whereMonth('created_at', now()->month)
+                ->whereYear('created_at', now()->year)
+                ->whereHas('order')
+                ->with('order')
+                ->get()
+                ->sum(function($reservation) {
+                    if ($reservation->order) {
+                        // Compter seulement ce qui est effectivement payé ce mois
+                        return $reservation->order->total_amount;
+                    }
+                    return 0;
+                }),
+            'pending_revenue' => \App\Models\ReservationRequest::where('center_id', $user->center_id)
+                ->whereIn('status', ['pending', 'confirmed'])
+                ->whereHas('order', function($q) {
+                    $q->where('payment_status', 'partial');
+                })
+                ->with('order')
+                ->get()
+                ->sum(function($reservation) {
+                    if ($reservation->order) {
+                        return $reservation->order->original_price - $reservation->order->total_amount;
+                    }
+                    return 0;
+                }),
         ];
 
         // Documents de réservation à valider (pour la cloche)
@@ -119,15 +255,6 @@ class DashboardController extends Controller
             'active_alerts' => \App\Models\Alert::where('center_id', $user->center_id)->where('resolved', false)->latest()->get(),
         ];
 
-        // Stock par groupe sanguin
-        $stockByBloodType = BloodBag::available()
-            ->where('center_id', $user->center_id)
-            ->join('blood_types', 'blood_bags.blood_type_id', '=', 'blood_types.id')
-            ->selectRaw('blood_types.group, COUNT(*) as count')
-            ->groupBy('blood_types.group')
-            ->pluck('count', 'blood_types.group')
-            ->toArray();
-
         // Prochaines campagnes
         $upcomingCampaigns = Campaign::upcoming()
             ->where('center_id', $user->center_id)
@@ -143,13 +270,32 @@ class DashboardController extends Controller
             ->limit(10)
             ->get();
 
+        // Chiffre d'affaires par mois - Sprint 5
+        $revenueChart = $this->getRevenueChartData($user->center_id);
+
+        // Transactions financières récentes - Sprint 5
+        $recentTransactions = \App\Models\Order::with(['user'])
+            ->where('center_id', $user->center_id)
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get();
+
+        // Réservations récentes du centre
+        $recentReservations = \App\Models\ReservationRequest::with(['user', 'items.bloodType'])
+            ->where('center_id', $user->center_id)
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get();
+
         return view('dashboard.manager', compact(
             'stats',
             'alerts',
-            'stockByBloodType',
             'upcomingCampaigns',
             'recentAppointments',
-            'pendingReservationDocuments'
+            'pendingReservationDocuments',
+            'revenueChart',
+            'recentTransactions',
+            'recentReservations'
         ));
     }
 
@@ -165,9 +311,9 @@ class DashboardController extends Controller
         // Stock par groupe sanguin
         $stockByBloodType = BloodBag::available()
             ->join('blood_types', 'blood_bags.blood_type_id', '=', 'blood_types.id')
-            ->selectRaw('blood_types.group, COUNT(*) as count')
-            ->groupBy('blood_types.group')
-            ->pluck('count', 'blood_types.group')
+            ->selectRaw('blood_types.`group` as blood_group, COUNT(*) as count')
+            ->groupBy('blood_group')
+            ->pluck('count', 'blood_group')
             ->toArray();
 
         // Prochaines campagnes
@@ -195,12 +341,12 @@ class DashboardController extends Controller
     private function getLowStockBloodTypes($centerId, $threshold = 5)
     {
         return BloodBag::available()
-            ->where('center_id', $centerId)
+                ->where('center_id', $centerId)
             ->join('blood_types', 'blood_bags.blood_type_id', '=', 'blood_types.id')
-            ->selectRaw('blood_types.group, COUNT(*) as count')
-            ->groupBy('blood_types.group')
+            ->selectRaw('blood_types.`group` as blood_group, COUNT(*) as count')
+            ->groupBy('blood_group')
             ->havingRaw('COUNT(*) < ?', [$threshold])
-            ->pluck('count', 'blood_types.group')
+            ->pluck('count', 'blood_group')
             ->toArray();
     }
 
@@ -220,6 +366,37 @@ class DashboardController extends Controller
                 ->whereYear('donated_at', $date->year)
                 ->count();
             $data[] = $count;
+        }
+        return [
+            'labels' => $months,
+            'data' => $data
+        ];
+    }
+
+    // Nouvelle méthode pour les données de revenus - Sprint 5
+    private function getRevenueChartData($centerId = null)
+    {
+        $user = Auth::user();
+        $centerFilter = $centerId ?? $user->center_id;
+        
+        $months = [];
+        $data = [];
+        for ($i = 5; $i >= 0; $i--) {
+            $date = Carbon::now()->subMonths($i);
+            $months[] = $date->format('M Y');
+            
+            $revenue = \App\Models\Order::when($centerFilter, function($q) use ($centerFilter) { 
+                return $q->where('center_id', $centerFilter); 
+            })
+                ->where('payment_status', '!=', 'failed')
+                ->whereMonth('created_at', $date->month)
+                ->whereYear('created_at', $date->year)
+                ->sum(\DB::raw('CASE 
+                    WHEN payment_status = "partial" THEN COALESCE(deposit_amount, total_amount * 0.5, 0)
+                    WHEN payment_status = "paid" THEN COALESCE(total_amount, 0)
+                    ELSE 0 
+                END'));
+            $data[] = $revenue;
         }
         return [
             'labels' => $months,

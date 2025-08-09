@@ -691,7 +691,7 @@ window.submitOrderReservation = function() {
                       `⏰ Délai de retrait : 72h maximum\n` +
                       `📱 Vous recevrez un SMS de confirmation\n\n` +
                       `Redirection vers vos commandes...`);
-                window.location.href = '/orders';
+                window.location.href = '/dashboard/client';
             }, 1000);
             
         } else {

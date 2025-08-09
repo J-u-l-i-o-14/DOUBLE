@@ -35,13 +35,21 @@ class Order extends Model
         'document_status',
         'validated_by',
         'validated_at',
-        'validation_notes'
+        'validation_notes',
+        // Champs pour informations détaillées
+        'doctor_name',
+        'patient_id_image',
+        'medical_certificate',
+        'payment_reference',
+        'transaction_id',
+        'payment_completed_at'
     ];    protected $casts = [
         'prescription_images' => 'array',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'order_date' => 'datetime',
         'validated_at' => 'datetime',
+        'payment_completed_at' => 'datetime',
     ];
 
     // Relations
@@ -53,6 +61,11 @@ class Order extends Model
     public function center()
     {
         return $this->belongsTo(Center::class);
+    }
+
+    public function reservationRequest()
+    {
+        return $this->hasOne(ReservationRequest::class);
     }
 
     public function validator()
@@ -319,5 +332,79 @@ class Order extends Model
     public function markAsCompleted()
     {
         $this->update(['status' => 'completed']);
+    }
+
+    /**
+     * Convertir cette commande en réservation
+     */
+    public function createReservationRequest()
+    {
+        // Vérifier si une réservation existe déjà
+        if ($this->reservationRequest) {
+            return $this->reservationRequest;
+        }
+
+        // Trouver le blood_type_id à partir du blood_type string
+        $bloodTypeId = $this->blood_type_id;
+        if (!$bloodTypeId && $this->blood_type) {
+            $bloodType = \App\Models\BloodType::where('group', $this->blood_type)->first();
+            $bloodTypeId = $bloodType ? $bloodType->id : null;
+        }
+
+        // Créer la réservation
+        $reservation = ReservationRequest::create([
+            'order_id' => $this->id,
+            'user_id' => $this->user_id,
+            'center_id' => $this->center_id,
+            'status' => $this->payment_status === 'paid' ? 'confirmed' : 'pending',
+            'total_amount' => $this->total_amount,
+            'paid_amount' => $this->deposit_amount ?? 0,
+            'expires_at' => now()->addDays(7), // Expire dans 7 jours
+        ]);
+
+        // Créer les items de réservation si on a un blood_type_id valide
+        if ($bloodTypeId) {
+            $reservation->items()->create([
+                'blood_type_id' => $bloodTypeId,
+                'quantity' => $this->quantity,
+                'unit_price' => $this->unit_price ?? ($this->total_amount / $this->quantity),
+                'total_price' => $this->total_amount,
+            ]);
+        }
+
+        return $reservation;
+    }
+    
+    /**
+     * Calculer l'acompte de 50%
+     */
+    public function getRequiredDepositAmount()
+    {
+        return $this->original_price * 0.5;
+    }
+    
+    /**
+     * Calculer le montant restant à payer
+     */
+    public function getRemainingAmountCalculated()
+    {
+        return $this->original_price - $this->total_amount;
+    }
+    
+    /**
+     * Vérifier si l'acompte est payé (50%)
+     */
+    public function hasDepositPaid()
+    {
+        return $this->total_amount >= ($this->original_price * 0.5);
+    }
+    
+    /**
+     * Obtenir le pourcentage payé
+     */
+    public function getPaymentPercentage()
+    {
+        if ($this->original_price <= 0) return 0;
+        return round(($this->total_amount / $this->original_price) * 100, 1);
     }
 }

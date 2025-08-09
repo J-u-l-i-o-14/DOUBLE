@@ -15,6 +15,19 @@ use Illuminate\Support\Str;
 
 class SearchBloodController extends Controller
 {
+    public function showReservationForm()
+    {
+        $regions = Region::all();
+        $bloodTypes = BloodType::all();
+        
+        return view('blood-reservation', compact('regions', 'bloodTypes'));
+    }
+
+    public function searchBlood(Request $request)
+    {
+        return $this->searchAjax($request);
+    }
+
     public function search(Request $request)
     {
         $regions = Region::all();
@@ -215,10 +228,10 @@ class SearchBloodController extends Controller
                 return response()->json([
                     'success' => true,
                     'message' => $successMessage,
-                    'redirectUrl' => route('reservations.show', $reservation)
+                    'redirectUrl' => route('dashboard.client')
                 ]);
             }
-            return redirect()->route('reservations.show', $reservation)->with('success', $successMessage);
+            return redirect()->route('dashboard.client')->with('success', $successMessage);
 
         } catch (\Exception $e) {
             // Annuler la transaction en cas d'erreur

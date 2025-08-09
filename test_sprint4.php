@@ -2,12 +2,18 @@
 // Test du Sprint 4 - Gestion des ordonnances multiples et statuts
 
 require_once __DIR__ . '/vendor/autoload.php';
+
+use Illuminate\Support\Facades\DB;
+
 $app = require_once __DIR__ . '/bootstrap/app.php';
+
+// Démarrer Laravel
+$kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+$kernel->bootstrap();
 
 echo "=== Test Sprint 4: Gestion des ordonnances multiples ===\n";
 
 try {
-    $db = $app->make('db');
     
     // Test 1: Numéro d'ordonnance jamais utilisé
     echo "\n1. Test ordonnance nouvelle (jamais utilisée):\n";
@@ -23,7 +29,7 @@ try {
     $inProgressPrescription = 'ORD-PROGRESS-' . time();
     
     // Simuler la création d'une commande en cours
-    $testOrder = $db->table('orders')->insertGetId([
+    $testOrder = DB::table('orders')->insertGetId([
         'user_id' => 1, // Supposant qu'il y a un utilisateur avec ID 1
         'center_id' => 1, // Supposant qu'il y a un centre avec ID 1
         'prescription_number' => $inProgressPrescription,
@@ -55,7 +61,7 @@ try {
     
     // Test 3: Marquer la commande comme terminée et tester
     echo "\n3. Test ordonnance terminée:\n";
-    $db->table('orders')->where('id', $testOrder)->update(['status' => 'completed']);
+    DB::table('orders')->where('id', $testOrder)->update(['status' => 'completed']);
     
     $status3 = \App\Models\Order::checkPrescriptionStatus($inProgressPrescription);
     echo "   Ordonnance: $inProgressPrescription (maintenant terminée)\n";
@@ -90,7 +96,7 @@ try {
     
     // Nettoyage: supprimer la commande de test
     echo "\n6. Nettoyage:\n";
-    $db->table('orders')->where('id', $testOrder)->delete();
+    DB::table('orders')->where('id', $testOrder)->delete();
     echo "   Commande de test supprimée\n";
     
     echo "\n=== Tests Sprint 4 terminés avec succès! ===\n";

@@ -57,7 +57,10 @@
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Date à partir de</label>
-                    <input type="date" name="date_from" class="form-control form-control-sm" value="{{ request('date_from') }}">
+                    <input type="date" name="date_from" class="form-control form-control-sm" 
+                           value="{{ request('date_from') }}"
+                           min="{{ date('Y-m-d', strtotime('-1 year')) }}"
+                           max="{{ date('Y-m-d', strtotime('+6 months')) }}">
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">&nbsp;</label>

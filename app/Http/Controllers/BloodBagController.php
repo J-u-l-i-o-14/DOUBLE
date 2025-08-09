@@ -15,9 +15,15 @@ class BloodBagController extends Controller
     public function index(Request $request)
     {
         $user = auth()->user();
+        
+        // Vérifier que l'utilisateur a un centre assigné
+        if (in_array($user->role, ['admin', 'manager']) && !$user->center_id) {
+            abort(403, 'Aucun centre assigné à votre compte.');
+        }
+        
         $query = BloodBag::with(['bloodType', 'center', 'donor']);
 
-        // Filtrer par centre pour admin/manager
+        // Filtrer par centre pour admin et manager (ils gèrent chacun leur centre)
         if (in_array($user->role, ['admin', 'manager'])) {
             $query->where('center_id', $user->center_id);
         }
@@ -32,71 +38,92 @@ class BloodBagController extends Controller
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->whereHas('donor', function($q) use ($search) {
-                $q->where('first_name', 'like', "%{$search}%")
-                  ->orWhere('last_name', 'like', "%{$search}%");
-            });
-        }
-        $bloodBags = $query->latest()->paginate(15);
+        // Note: Recherche de donneur retirée car plus de liaison avec les donneurs
+        
+        $bloodBags = $query->latest()->paginate(25); // Augmenté à 25 par page
         $bloodTypes = BloodType::all();
         $centers = Center::all();
-        return view('blood-bags.index', compact('bloodBags', 'bloodTypes', 'centers'));
+        
+        // Statistiques pour l'utilisateur
+        $stats = [];
+        if (in_array($user->role, ['admin', 'manager'])) {
+            $baseQuery = BloodBag::where('center_id', $user->center_id);
+            $stats = [
+                'total' => $baseQuery->count(),
+                'available' => $baseQuery->where('status', 'available')->count(),
+                'reserved' => $baseQuery->where('status', 'reserved')->count(),
+                'expired' => $baseQuery->where('status', 'expired')->count(),
+            ];
+        }
+        
+        return view('blood-bags.index', compact('bloodBags', 'bloodTypes', 'centers', 'stats'));
     }
 
     public function create()
     {
         $bloodTypes = BloodType::all();
         $centers = Center::all();
-        $donors = Donor::all();
 
-        return view('blood-bags.create', compact('bloodTypes', 'centers', 'donors'));
+        return view('blood-bags.create', compact('bloodTypes', 'centers'));
     }
 
     public function store(Request $request)
     {
         $user = auth()->user();
+        
+        // Vérifier que l'utilisateur a un centre assigné
+        if (in_array($user->role, ['admin', 'manager']) && !$user->center_id) {
+            return back()->withErrors(['center_id' => 'Aucun centre assigné à votre compte.']);
+        }
+        
         $request->validate([
             'blood_type_id' => 'required|exists:blood_types,id',
-            'donor_id' => 'nullable|exists:donors,id',
-            'donor_name' => 'nullable|string|max:255',
-            'volume' => 'required|numeric|min:100|max:500',
             'collected_at' => 'required|date',
+            'center_id' => 'required|exists:centers,id',
+            'quantity' => 'required|integer|min:1|max:1000',
         ]);
-        // Exiger un donneur (sélection ou nom)
-        if (empty($request->donor_id) && empty($request->donor_name)) {
-            return back()->withErrors(['donor_id' => 'Vous devez sélectionner un donneur ou saisir un nom.'])->withInput();
-        }
-        $centerId = $user->center_id;
-        // Si aucun donneur sélectionné mais nom fourni, créer un donneur minimal
-        $donorId = $request->donor_id;
-        if (!$donorId && $request->donor_name) {
-            $donor = \App\Models\Donor::create([
-                'first_name' => $request->donor_name,
-                'last_name' => '',
-                'center_id' => $centerId,
-                'blood_type_id' => $request->blood_type_id,
-                'gender' => 'other',
-            ]);
-            $donorId = $donor->id;
-        }
+
+        $centerId = $user->center_id ?? $request->center_id;
+        $quantity = $request->quantity;
+        
         // Calculer la date d'expiration (42 jours après la collecte)
         $collectedAt = \Carbon\Carbon::parse($request->collected_at);
         $expiresAt = $collectedAt->copy()->addDays(42);
-        $bloodBag = \App\Models\BloodBag::create([
-            'blood_type_id' => $request->blood_type_id,
-            'center_id' => $centerId,
-            'donor_id' => $donorId,
-            'volume' => $request->volume,
-            'collected_at' => $collectedAt,
-            'expires_at' => $expiresAt,
-            'status' => 'available',
-        ]);
+        
+        // Créer les poches en lot pour optimiser les performances
+        $bloodBags = [];
+        $batchSize = 500; // Traiter par batch de 500 pour éviter les timeouts
+        $totalCreated = 0;
+        
+        for ($batch = 0; $batch < ceil($quantity / $batchSize); $batch++) {
+            $currentBatchSize = min($batchSize, $quantity - ($batch * $batchSize));
+            $bloodBags = [];
+            
+            for ($i = 0; $i < $currentBatchSize; $i++) {
+                $bloodBags[] = [
+                    'blood_type_id' => $request->blood_type_id,
+                    'center_id' => $centerId,
+                    'donor_id' => null,
+                    'volume' => 450,
+                    'collected_at' => $collectedAt,
+                    'expires_at' => $expiresAt,
+                    'status' => 'available',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }
+            
+            // Insertion en lot
+            \App\Models\BloodBag::insert($bloodBags);
+            $totalCreated += $currentBatchSize;
+        }
+        
         // Mettre à jour l'inventaire
         $this->updateInventory($centerId, $request->blood_type_id);
+        
         return redirect()->route('blood-bags.index')
-            ->with('success', 'Poche de sang créée avec succès.');
+            ->with('success', "{$totalCreated} poche(s) de sang créée(s) avec succès pour le groupe " . 
+                   \App\Models\BloodType::find($request->blood_type_id)->group . ".");
     }
 
     public function show(BloodBag $bloodBag)
@@ -109,35 +136,41 @@ class BloodBagController extends Controller
     {
         $bloodTypes = BloodType::all();
         $centers = Center::all();
-        $donors = Donor::all();
 
-        return view('blood-bags.edit', compact('bloodBag', 'bloodTypes', 'centers', 'donors'));
+        return view('blood-bags.edit', compact('bloodBag', 'bloodTypes', 'centers'));
     }
 
     public function update(Request $request, BloodBag $bloodBag)
     {
         $user = auth()->user();
+        
+        // Vérifier que l'utilisateur a un centre assigné
+        if (in_array($user->role, ['admin', 'manager']) && !$user->center_id) {
+            return back()->withErrors(['center_id' => 'Aucun centre assigné à votre compte.']);
+        }
+        
         $request->validate([
             'blood_type_id' => 'required|exists:blood_types,id',
-            'donor_id' => 'nullable|exists:donors,id',
-            'volume' => 'required|numeric|min:100|max:500',
             'collected_at' => 'required|date',
             'status' => 'required|in:available,reserved,transfused,expired,discarded',
+            'center_id' => 'required|exists:centers,id',
         ]);
-        $centerId = $user->center_id;
+        
+        $centerId = $user->center_id ?? $request->center_id;
         $collectedAt = Carbon::parse($request->collected_at);
         $expiresAt = $collectedAt->copy()->addDays(42);
+        
         $bloodBag->update([
             'blood_type_id' => $request->blood_type_id,
             'center_id' => $centerId,
-            'donor_id' => $request->donor_id,
-            'volume' => $request->volume,
             'collected_at' => $collectedAt,
             'expires_at' => $expiresAt,
             'status' => $request->status,
         ]);
+        
         // Mettre à jour l'inventaire
         $this->updateInventory($centerId, $request->blood_type_id);
+        
         return redirect()->route('blood-bags.index')
             ->with('success', 'Poche de sang mise à jour avec succès.');
     }

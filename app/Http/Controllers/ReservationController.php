@@ -25,6 +25,19 @@ class ReservationController extends Controller
             $query->where('center_id', $user->center_id);
         }
 
+        // Filtres de recherche
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('created_at', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('created_at', '<=', $request->date_to);
+        }
+
         $reservations = $query->latest()->paginate(15);
         $centers = Center::all();
 
@@ -48,93 +61,150 @@ class ReservationController extends Controller
             'items.*.quantity' => 'required|integer|min:1',
         ]);
         $centerId = $user->role === 'client' ? $request->center_id : $user->center_id;
-        // Vérifier la disponibilité
+        
+        // Vérifier la disponibilité et réserver temporairement les poches
         $totalAmount = 0;
-        foreach ($request->items as $item) {
-            $available = CenterBloodTypeInventory::where('center_id', $centerId)
-                ->where('blood_type_id', $item['blood_type_id'])
-                ->value('available_quantity') ?? 0;
-            if ($available < $item['quantity']) {
-                return back()->withErrors(['items' => "Stock insuffisant pour le groupe sanguin sélectionné."]);
-            }
-            $totalAmount += $item['quantity'] * 50;
+        $reservedBloodBags = []; // Pour tracker les poches réservées
+        
+        try {
+            \DB::transaction(function () use ($request, $centerId, $user, &$totalAmount, &$reservedBloodBags) {
+                foreach ($request->items as $item) {
+                    $available = CenterBloodTypeInventory::where('center_id', $centerId)
+                        ->where('blood_type_id', $item['blood_type_id'])
+                        ->value('available_quantity') ?? 0;
+                    
+                    if ($available < $item['quantity']) {
+                        throw new \Exception("Stock insuffisant pour le groupe sanguin sélectionné.");
+                    }
+                    
+                    // Réserver temporairement les poches lors de la création
+                    $bloodBags = BloodBag::where('center_id', $centerId)
+                        ->where('blood_type_id', $item['blood_type_id'])
+                        ->where('status', 'available')
+                        ->lockForUpdate()
+                        ->limit($item['quantity'])
+                        ->get();
+                    
+                    if ($bloodBags->count() < $item['quantity']) {
+                        throw new \Exception("Stock insuffisant pour le groupe sanguin sélectionné.");
+                    }
+                    
+                    // Marquer comme temporairement réservées (pending)
+                    $bloodBagIds = $bloodBags->pluck('id');
+                    BloodBag::whereIn('id', $bloodBagIds)->update(['status' => 'pending_reservation']);
+                    
+                    $reservedBloodBags[$item['blood_type_id']] = $bloodBagIds->toArray();
+                    $totalAmount += $item['quantity'] * 5000; // Prix par poche
+                }
+                
+                // Créer la réservation
+                $reservation = ReservationRequest::create([
+                    'user_id' => $user->id,
+                    'center_id' => $centerId,
+                    'status' => 'pending',
+                    'total_amount' => $totalAmount,
+                ]);
+                
+                // Créer les items
+                foreach ($request->items as $item) {
+                    ReservationItem::create([
+                        'request_id' => $reservation->id,
+                        'blood_type_id' => $item['blood_type_id'],
+                        'quantity' => $item['quantity'],
+                    ]);
+                }
+                
+                // Créer les liens réservation-poches avec statut temporaire
+                foreach ($request->items as $item) {
+                    $bloodBagIds = $reservedBloodBags[$item['blood_type_id']];
+                    foreach ($bloodBagIds as $bloodBagId) {
+                        ReservationBloodBag::create([
+                            'reservation_id' => $reservation->id,
+                            'blood_bag_id' => $bloodBagId,
+                        ]);
+                    }
+                }
+                
+                // Mettre à jour l'inventaire pour refléter les réservations temporaires
+                foreach ($request->items as $item) {
+                    $this->updateInventory($centerId, $item['blood_type_id']);
+                }
+                
+                // Stocker l'ID de réservation pour la redirection
+                $this->reservationId = $reservation->id;
+            });
+            
+            return redirect()->route('reservations.show', $this->reservationId)
+                ->with('success', 'Demande de réservation créée avec succès. Les poches sont temporairement réservées en attente de confirmation.');
+                
+        } catch (\Exception $e) {
+            return back()->withErrors(['items' => $e->getMessage()]);
         }
-        // Créer la réservation
-        $reservation = ReservationRequest::create([
-            'user_id' => $user->id,
-            'center_id' => $centerId,
-            'status' => 'pending',
-            'total_amount' => $totalAmount,
-            'paid_amount' => 0,
-        ]);
-        // Créer les items
-        foreach ($request->items as $item) {
-            ReservationItem::create([
-                'request_id' => $reservation->id,
-                'blood_type_id' => $item['blood_type_id'],
-                'quantity' => $item['quantity'],
-            ]);
-        }
-        return redirect()->route('reservations.show', $reservation)
-            ->with('success', 'Demande de réservation créée avec succès.');
     }
+    
+    private $reservationId; // Variable temporaire pour la transaction
 
     public function show(ReservationRequest $reservation)
     {
-        $reservation->load(['user', 'center', 'items.bloodType', 'payments', 'documents']);
+        $reservation->load(['user', 'center', 'items.bloodType', 'order', 'updatedBy']);
         
         return view('reservations.show', compact('reservation'));
     }
 
     public function confirm(ReservationRequest $reservation)
     {
-        if ($reservation->status !== 'pending') {
-            return back()->with('error', 'Cette réservation ne peut pas être confirmée.');
+        $user = auth()->user();
+        
+        // Vérifier les permissions
+        if (!in_array($user->role, ['admin', 'manager'])) {
+            return response()->json(['success' => false, 'message' => 'Accès non autorisé'], 403);
         }
-
-        // Vérifier le paiement de 50%
-        $requiredPayment = $reservation->total_amount * 0.5;
-        if ($reservation->paid_amount < $requiredPayment) {
-            return back()->with('error', 'Le paiement de 50% est requis pour confirmer la réservation.');
+        
+        if ($reservation->status !== 'pending') {
+            return response()->json(['success' => false, 'message' => 'Cette réservation ne peut pas être confirmée.']);
         }
 
         try {
-            \DB::transaction(function () use ($reservation) {
+            \DB::transaction(function () use ($reservation, $user) {
                 \Log::info('Début confirmation réservation', ['reservation_id' => $reservation->id]);
-                // Confirmer la réservation
+                
+                // 1. Confirmer la réservation
                 $reservation->update([
                     'status' => 'confirmed',
+                    'manager_notes' => 'Réservation confirmée - Stock réservé',
+                    'updated_by' => $user->id,
                     'expires_at' => \Carbon\Carbon::now()->addHours(72), // 72 heures
                 ]);
 
-                // Réserver les poches spécifiques
-                $this->reserveBloodBags($reservation);
+                // 2. Réserver les poches spécifiques et décrémenter le stock
+                $this->reserveBloodBagsAndDecrementStock($reservation);
 
-                // Créer un audit
-                $reservation->audits()->create([
-                    'user_id' => auth()->id(),
-                    'action' => 'confirmed',
-                    'notes' => 'Réservation confirmée par le gestionnaire',
-                ]);
                 \Log::info('Fin confirmation réservation', ['reservation_id' => $reservation->id]);
             });
+            
+            return response()->json(['success' => true, 'message' => 'Réservation confirmée avec succès. Stock décrémenté.']);
+            
         } catch (\Exception $e) {
-            \Log::error('Erreur lors de la confirmation de réservation', ['reservation_id' => $reservation->id, 'error' => $e->getMessage()]);
-            return back()->with('error', 'Erreur lors de la confirmation de la réservation : ' . $e->getMessage());
+            \Log::error('Erreur lors de la confirmation de réservation', [
+                'reservation_id' => $reservation->id, 
+                'error' => $e->getMessage()
+            ]);
+            return response()->json(['success' => false, 'message' => 'Erreur lors de la confirmation : ' . $e->getMessage()]);
         }
-
-        return back()->with('success', 'Réservation confirmée avec succès.');
     }
 
-    private function reserveBloodBags($reservation)
+    /**
+     * Réserver les poches de sang spécifiques et décrémenter le stock
+     */
+    private function reserveBloodBagsAndDecrementStock($reservation)
     {
-        $reservedTypes = [];
         foreach ($reservation->items as $item) {
-            \Log::info('Réservation de poches', [
+            \Log::info('Réservation de poches avec décrémentation stock', [
                 'reservation_id' => $reservation->id,
                 'blood_type_id' => $item->blood_type_id,
                 'quantity' => $item->quantity
             ]);
+            
             // Sélectionner les poches disponibles avec verrouillage
             $bloodBags = BloodBag::where('center_id', $reservation->center_id)
                 ->where('blood_type_id', $item->blood_type_id)
@@ -144,24 +214,176 @@ class ReservationController extends Controller
                 ->get();
 
             if ($bloodBags->count() < $item->quantity) {
-                throw new \Exception('Stock insuffisant lors de la réservation.');
+                throw new \Exception("Stock insuffisant pour le groupe sanguin {$item->bloodType->group}. Requis: {$item->quantity}, Disponible: {$bloodBags->count()}");
             }
 
-            // Update groupé
-            BloodBag::whereIn('id', $bloodBags->pluck('id'))->update(['status' => 'reserved']);
+            // Marquer les poches comme réservées
+            $bloodBagIds = $bloodBags->pluck('id');
+            BloodBag::whereIn('id', $bloodBagIds)->update(['status' => 'reserved']);
 
-            // Création des liens ReservationBloodBag (toujours en boucle)
+            // Créer les liens réservation-poches
             foreach ($bloodBags as $bloodBag) {
                 ReservationBloodBag::create([
-                    'reservation_id' => $reservation->id,
+                    'reservation_id' => $reservation->id,  // Corrigé: utiliser reservation_id au lieu de reservation_request_id
                     'blood_bag_id' => $bloodBag->id,
                 ]);
             }
-            $reservedTypes[] = $item->blood_type_id;
+
+            // Décrémenter l'inventaire du centre
+            $this->updateInventory($reservation->center_id, $item->blood_type_id);
         }
-        // Mettre à jour l'inventaire une seule fois par type réservé
-        foreach (array_unique($reservedTypes) as $bloodTypeId) {
+    }
+
+    public function updateStatus(Request $request, ReservationRequest $reservation)
+    {
+        $user = auth()->user();
+        
+        if (!in_array($user->role, ['admin', 'manager'])) {
+            return response()->json(['success' => false, 'message' => 'Accès non autorisé'], 403);
+        }
+        
+        // Si c'est un manager, vérifier qu'il gère le bon centre
+        if ($user->role === 'manager' && $reservation->center_id !== $user->center_id) {
+            return response()->json(['success' => false, 'message' => 'Vous ne pouvez modifier que les réservations de votre centre'], 403);
+        }
+        
+        $request->validate([
+            'status' => 'required|in:pending,confirmed,cancelled,completed,expired',
+            'note' => 'nullable|string|max:1000'
+        ]);
+        
+        $oldStatus = $reservation->status;
+        
+        $reservation->update([
+            'status' => $request->status,
+            'manager_notes' => $request->note,
+            'updated_by' => $user->id
+        ]);
+        
+        // Si la réservation est confirmée, réserver les poches de sang
+        if ($request->status === 'confirmed' && $oldStatus !== 'confirmed') {
+            try {
+                $this->reserveBloodBagsAndDecrementStock($reservation);
+            } catch (\Exception $e) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Erreur lors de la réservation des poches: ' . $e->getMessage()
+                ]);
+            }
+        }
+        
+        // Si la réservation est annulée ou expirée, libérer les poches de sang
+        if (in_array($request->status, ['cancelled', 'expired']) && $oldStatus !== $request->status) {
+            $this->releaseBloodBags($reservation);
+        }
+        
+        // Si la réservation est complétée (retrait effectué), finaliser le paiement
+        if ($request->status === 'completed' && $oldStatus !== 'completed') {
+            $this->completePayment($reservation);
+        }
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Statut mis à jour avec succès',
+            'new_status' => $request->status
+        ]);
+    }
+
+    /**
+     * Libérer les poches de sang réservées
+     */
+    private function releaseBloodBags(ReservationRequest $reservation)
+    {
+        $bloodBagIds = $reservation->reservationBloodBags()->pluck('blood_bag_id');
+        
+        // Remettre les poches comme disponibles
+        BloodBag::whereIn('id', $bloodBagIds)->update(['status' => 'available']);
+        
+        // Mettre à jour l'inventaire
+        $bloodTypeIds = BloodBag::whereIn('id', $bloodBagIds)->distinct()->pluck('blood_type_id');
+        
+        foreach ($bloodTypeIds as $bloodTypeId) {
             $this->updateInventory($reservation->center_id, $bloodTypeId);
+        }
+    }
+
+    /**
+     * Mettre à jour plusieurs réservations en lot
+     */
+    public function bulkUpdateStatus(Request $request)
+    {
+        $user = auth()->user();
+        
+        if (!in_array($user->role, ['admin', 'manager'])) {
+            return response()->json(['success' => false, 'message' => 'Accès non autorisé'], 403);
+        }
+        
+        $request->validate([
+            'reservation_ids' => 'required|array',
+            'reservation_ids.*' => 'exists:reservation_requests,id',
+            'status' => 'required|in:confirmed,cancelled,completed,expired'
+        ]);
+        
+        $query = ReservationRequest::whereIn('id', $request->reservation_ids);
+        
+        // Si c'est un manager, filtrer par centre
+        if ($user->role === 'manager') {
+            $query->where('center_id', $user->center_id);
+        }
+        
+        $reservations = $query->get();
+        
+        foreach ($reservations as $reservation) {
+            $oldStatus = $reservation->status;
+            $reservation->update([
+                'status' => $request->status,
+                'updated_by' => $user->id
+            ]);
+            
+            // Si la réservation est annulée ou expirée, libérer les poches de sang
+            if (in_array($request->status, ['cancelled', 'expired']) && $oldStatus !== $request->status) {
+                $this->releaseBloodBags($reservation);
+            }
+            
+            // Si la réservation est complétée (retrait effectué), finaliser le paiement
+            if ($request->status === 'completed' && $oldStatus !== 'completed') {
+                $this->completePayment($reservation);
+            }
+        }
+        
+        return response()->json([
+            'success' => true,
+            'message' => count($reservations) . ' réservation(s) mise(s) à jour'
+        ]);
+    }
+
+    /**
+     * Compléter le paiement lors du retrait des poches
+     */
+    private function completePayment(ReservationRequest $reservation)
+    {
+        if ($reservation->order) {
+            $order = $reservation->order;
+            
+            // Si le paiement est partiel, calculer le montant restant
+            if ($order->payment_status === 'partial') {
+                $remainingAmount = $order->original_price - $order->total_amount;
+                
+                if ($remainingAmount > 0) {
+                    // Mettre à jour le montant total et le statut
+                    $order->update([
+                        'total_amount' => $order->original_price,
+                        'payment_status' => 'paid',
+                        'payment_completed_at' => now()
+                    ]);
+                    
+                    \Log::info('Paiement complété lors du retrait', [
+                        'order_id' => $order->id,
+                        'remaining_amount' => $remainingAmount,
+                        'total_amount' => $order->original_price
+                    ]);
+                }
+            }
         }
     }
 
@@ -182,4 +404,4 @@ class ReservationController extends Controller
             ]
         );
     }
-} 
+}

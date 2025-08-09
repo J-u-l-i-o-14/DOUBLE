@@ -13,17 +13,19 @@ class UserController extends Controller
         $user = auth()->user();
         $query = User::query();
 
-        // Filtrer par centre pour admin/manager
-        if (in_array($user->role, ['admin', 'manager'])) {
+        // Sécurité : Seuls admin et manager peuvent voir les utilisateurs
+        if (!in_array($user->role, ['admin', 'manager'])) {
+            abort(403, 'Accès non autorisé');
+        }
+
+        // Admin voit tout, manager voit seulement son centre
+        if ($user->role === 'manager') {
             $query->where('center_id', $user->center_id);
         }
 
         // Filtres
         if ($request->filled('role')) {
             $query->where('role', $request->role);
-        }
-        if ($request->filled('center_id')) {
-            $query->where('center_id', $request->center_id);
         }
         if ($request->filled('search')) {
             $search = $request->search;
@@ -33,34 +35,62 @@ class UserController extends Controller
             });
         }
         $users = $query->latest()->paginate(15);
-        $centers = \App\Models\Center::all();
-        return view('users.index', compact('users', 'centers'));
+        return view('users.index', compact('users'));
     }
 
     public function create()
     {
-        $bloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
-        return view('users.create', compact('bloodTypes'));
+        $user = auth()->user();
+        
+        // Sécurité : Seuls admin et manager peuvent créer des utilisateurs
+        if (!in_array($user->role, ['admin', 'manager'])) {
+            abort(403, 'Accès non autorisé');
+        }
+
+        // Récupérer la liste des centres pour les admins
+        $centers = [];
+        if ($user->role === 'admin') {
+            $centers = \App\Models\Center::all();
+        }
+
+        return view('users.create', compact('centers'));
     }
 
     public function store(Request $request)
     {
         $user = auth()->user();
+        
+        // Sécurité : Seuls admin et manager peuvent créer des utilisateurs
+        if (!in_array($user->role, ['admin', 'manager'])) {
+            abort(403, 'Accès non autorisé');
+        }
+
         $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email',
-            'password' => 'required|string|min:8|confirmed',
+            'name' => 'required|string|max:255|min:2',
+            'email' => 'required|email|unique:users,email|max:255',
+            'password' => 'required|string|min:8|confirmed|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/',
             'role' => 'required|in:admin,manager,donor,patient,client',
-            'phone' => 'nullable|string|max:20',
-            'birth_date' => 'nullable|date|before:today',
-            'address' => 'nullable|string',
-            'gender' => 'nullable|in:M,F',
+            'phone' => 'nullable|string|max:20|min:8',
+            'address' => 'nullable|string|max:500',
+            'gender' => 'required|in:M,F',
+        ], [
+            'password.regex' => 'Le mot de passe doit contenir au moins une minuscule, une majuscule et un chiffre.',
+            'gender.required' => 'Le genre est obligatoire.',
+            'name.min' => 'Le nom doit contenir au moins 2 caractères.',
+            'phone.min' => 'Le numéro de téléphone doit contenir au moins 8 caractères.',
         ]);
-        $data = $request->all();
-        if (in_array($user->role, ['admin', 'manager'])) {
+
+        $data = $request->only(['name', 'email', 'role', 'phone', 'address', 'gender']);
+        
+        // Assigner automatiquement le centre selon les permissions
+        if ($user->role === 'manager') {
+            $data['center_id'] = $user->center_id;
+        } elseif ($user->role === 'admin' && $user->center_id) {
             $data['center_id'] = $user->center_id;
         }
-        $data['password'] = Hash::make($data['password']);
+        
+        $data['password'] = Hash::make($request->password);
+        
         User::create($data);
         return redirect()->route('users.index')
             ->with('success', 'Utilisateur créé avec succès.');
@@ -75,29 +105,52 @@ class UserController extends Controller
     public function edit(User $user)
     {
         $bloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
-        return view('users.edit', compact('user', 'bloodTypes'));
+        
+        // Récupérer la liste des centres pour les admins
+        $centers = [];
+        $authUser = auth()->user();
+        if ($authUser->role === 'admin') {
+            $centers = \App\Models\Center::all();
+        }
+        
+        return view('users.edit', compact('user', 'bloodTypes', 'centers'));
     }
 
     public function update(Request $request, User $user)
     {
         $authUser = auth()->user();
+        
+        // Sécurité : Seuls admin et manager peuvent modifier des utilisateurs
+        if (!in_array($authUser->role, ['admin', 'manager'])) {
+            abort(403, 'Accès non autorisé');
+        }
+
+        // Manager ne peut modifier que les utilisateurs de son centre
+        if ($authUser->role === 'manager' && $user->center_id !== $authUser->center_id) {
+            abort(403, 'Vous ne pouvez modifier que les utilisateurs de votre centre');
+        }
+
         $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email,' . $user->id,
-            'password' => 'nullable|string|min:8|confirmed',
+            'name' => 'required|string|max:255|min:2',
+            'email' => 'required|email|unique:users,email,' . $user->id . '|max:255',
+            'password' => 'nullable|string|min:8|confirmed|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/',
             'role' => 'required|in:admin,manager,donor,patient,client',
-            'phone' => 'nullable|string|max:20',
-            'birth_date' => 'nullable|date|before:today',
-            'address' => 'nullable|string',
-            'gender' => 'nullable|in:M,F',
+            'phone' => 'nullable|string|max:20|min:8',
+            'address' => 'nullable|string|max:500',
+            'gender' => 'required|in:M,F',
+        ], [
+            'password.regex' => 'Le mot de passe doit contenir au moins une minuscule, une majuscule et un chiffre.',
+            'gender.required' => 'Le genre est obligatoire.',
+            'name.min' => 'Le nom doit contenir au moins 2 caractères.',
+            'phone.min' => 'Le numéro de téléphone doit contenir au moins 8 caractères.',
         ]);
-        $updateData = $request->except(['password', 'password_confirmation']);
+
+        $updateData = $request->only(['name', 'email', 'role', 'phone', 'address', 'gender']);
+        
         if ($request->filled('password')) {
             $updateData['password'] = Hash::make($request->password);
         }
-        if (in_array($authUser->role, ['admin', 'manager'])) {
-            $updateData['center_id'] = $authUser->center_id;
-        }
+        
         $user->update($updateData);
         return redirect()->route('users.index')
             ->with('success', 'Utilisateur mis à jour avec succès.');

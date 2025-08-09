@@ -41,7 +41,11 @@
             </div>
             <div>
                 <label for="birth_date" class="block text-sm font-medium text-gray-700">Date de naissance</label>
-                <input type="date" name="birth_date" id="birth_date" value="{{ old('birth_date', $user->birth_date) }}" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                <input type="date" name="birth_date" id="birth_date" 
+                       value="{{ old('birth_date', $user->birth_date) }}"
+                       min="{{ date('Y-m-d', strtotime('-100 years')) }}" 
+                       max="{{ date('Y-m-d', strtotime('-16 years')) }}"
+                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
             </div>
             <div>
                 <label for="address" class="block text-sm font-medium text-gray-700">Adresse</label>

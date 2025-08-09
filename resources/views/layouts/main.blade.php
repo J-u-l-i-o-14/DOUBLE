@@ -143,6 +143,13 @@
                                     <span>Poches de Sang</span>
                                 </a>
                             </li>
+                            <li>
+                                <a href="{{ route('reservations.index') }}" 
+                                   class="flex items-center px-4 py-3 text-white rounded-lg transition-colors duration-200 {{ request()->routeIs('reservations.*') ? 'bg-white bg-opacity-20' : 'hover:bg-white hover:bg-opacity-10' }}">
+                                    <i class="fas fa-clipboard-list mr-3"></i>
+                                    <span>Réservations</span>
+                                </a>
+                            </li>
                         @endif
 
                         @if(auth()->user()->is_admin)
@@ -204,6 +211,26 @@
                         </h1>
                         <div class="flex items-center space-x-4">
                             @yield('page-actions')
+                            
+                            @if(auth()->user()->is_admin || auth()->user()->is_manager)
+                                <!-- Cloche de notifications -->
+                                @php
+                                    $activeAlertsCount = \App\Models\Alert::where('center_id', auth()->user()->center_id)->where('resolved', false)->count();
+                                    $activeAlerts = \App\Models\Alert::with('bloodType')->where('center_id', auth()->user()->center_id)->where('resolved', false)->orderBy('created_at', 'desc')->limit(5)->get();
+                                @endphp
+                                <div class="relative">
+                                    <button type="button" 
+                                            class="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+                                            onclick="toggleAlertsModal()">
+                                        <i class="fas fa-bell text-lg"></i>
+                                        @if($activeAlertsCount > 0)
+                                            <span class="absolute -top-1 -right-1 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-red-600 rounded-full">
+                                                {{ $activeAlertsCount > 99 ? '99+' : $activeAlertsCount }}
+                                            </span>
+                                        @endif
+                                    </button>
+                                </div>
+                            @endif
                         </div>
                     </div>
                 </div>
@@ -249,6 +276,225 @@
             </main>
         </div>
     </div>
+
+    @if(auth()->user()->is_admin || auth()->user()->is_manager)
+        <!-- Modal des Alertes (style Tailwind) -->
+        @php
+            $activeAlertsCount = \App\Models\Alert::where('center_id', auth()->user()->center_id)->where('resolved', false)->count();
+            $activeAlerts = \App\Models\Alert::with('bloodType')->where('center_id', auth()->user()->center_id)->where('resolved', false)->orderBy('created_at', 'desc')->limit(5)->get();
+        @endphp
+        <div id="alertsModal" class="fixed inset-0 z-50 hidden overflow-y-auto">
+            <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onclick="closeAlertsModal()"></div>
+                
+                <div class="inline-block w-full max-w-2xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-2xl">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-medium leading-6 text-gray-900 flex items-center">
+                            <i class="fas fa-bell text-red-600 mr-2"></i>
+                            Alertes du Centre
+                            @if($activeAlertsCount > 0)
+                                <span class="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                    {{ $activeAlertsCount }}
+                                </span>
+                            @endif
+                        </h3>
+                        <button type="button" 
+                                class="text-gray-400 hover:text-gray-600"
+                                onclick="closeAlertsModal()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="mt-4">
+                        @if($activeAlertsCount > 0)
+                            <div class="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                <div class="flex items-center">
+                                    <i class="fas fa-exclamation-triangle text-yellow-600 mr-2"></i>
+                                    <div class="text-yellow-800">
+                                        <strong>{{ $activeAlertsCount }}</strong> alerte(s) nécessitent votre attention.
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="space-y-3">
+                                @foreach($activeAlerts as $alert)
+                                    <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors duration-200">
+                                        <div class="flex items-start justify-between">
+                                            <div class="flex-1">
+                                                <div class="flex items-center mb-2">
+                                                    @if($alert->type === 'low_stock')
+                                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 mr-2">
+                                                            <i class="fas fa-tint mr-1"></i> Stock Faible
+                                                        </span>
+                                                    @elseif($alert->type === 'expiration')
+                                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 mr-2">
+                                                            <i class="fas fa-clock mr-1"></i> Expiration
+                                                        </span>
+                                                    @endif
+                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                        {{ $alert->bloodType->group }}
+                                                    </span>
+                                                </div>
+                                                <p class="text-gray-900 mb-1">{{ $alert->message }}</p>
+                                                <small class="text-gray-500">
+                                                    <i class="fas fa-calendar mr-1"></i>
+                                                    {{ $alert->created_at->format('d/m/Y à H:i') }}
+                                                </small>
+                                            </div>
+                                            <div class="ml-4">
+                                                <button class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500" 
+                                                        onclick="resolveAlert({{ $alert->id }})">
+                                                    <i class="fas fa-check mr-1"></i>
+                                                    Résoudre
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                            
+                            @if($activeAlertsCount > 5)
+                                <div class="text-center mt-4">
+                                    <p class="text-gray-500">Et {{ $activeAlertsCount - 5 }} autres alertes...</p>
+                                </div>
+                            @endif
+                        @else
+                            <div class="text-center py-8">
+                                <i class="fas fa-check-circle text-green-500 text-5xl mb-4"></i>
+                                <h3 class="text-lg font-medium text-green-900 mb-2">Aucune alerte active</h3>
+                                <p class="text-green-700">Excellent ! Votre centre n'a aucune alerte critique en cours.</p>
+                            </div>
+                        @endif
+                    </div>
+                    
+                    <div class="mt-6 flex items-center justify-between">
+                        <div>
+                            @if($activeAlertsCount > 0)
+                                <button type="button" 
+                                        class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                                        onclick="refreshAlerts()">
+                                    <i class="fas fa-sync-alt mr-2"></i>
+                                    Actualiser
+                                </button>
+                            @endif
+                        </div>
+                        <div class="flex space-x-3">
+                            <a href="{{ route('alerts.index') }}" 
+                               class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                                <i class="fas fa-cog mr-2"></i>
+                                Gérer toutes les alertes
+                            </a>
+                            <button type="button" 
+                                    class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+                                    onclick="closeAlertsModal()">
+                                Fermer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            function toggleAlertsModal() {
+                console.log('toggleAlertsModal called');
+                const modal = document.getElementById('alertsModal');
+                if (modal) {
+                    modal.classList.toggle('hidden');
+                    console.log('Modal toggled, hidden class:', modal.classList.contains('hidden'));
+                } else {
+                    console.error('Modal not found');
+                }
+            }
+
+            function closeAlertsModal() {
+                console.log('closeAlertsModal called');
+                const modal = document.getElementById('alertsModal');
+                if (modal) {
+                    modal.classList.add('hidden');
+                    console.log('Modal closed');
+                } else {
+                    console.error('Modal not found');
+                }
+            }
+
+            function resolveAlert(alertId) {
+                console.log('resolveAlert called with ID:', alertId);
+                if (confirm('Marquer cette alerte comme résolue ?')) {
+                    console.log('User confirmed, sending request to resolve alert');
+                    fetch(`/alerts/${alertId}/resolve`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                            'Content-Type': 'application/json',
+                        }
+                    })
+                    .then(response => {
+                        console.log('Response received:', response.status);
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Response data:', data);
+                        if (data.success) {
+                            closeAlertsModal();
+                            setTimeout(() => {
+                                location.reload();
+                            }, 300);
+                        } else {
+                            alert('Erreur: ' + (data.message || 'Une erreur est survenue'));
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Erreur:', error);
+                        alert('Erreur de communication avec le serveur');
+                    });
+                }
+            }
+
+            function refreshAlerts() {
+                console.log('refreshAlerts called');
+                fetch('/alerts/generate', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'Content-Type': 'application/json',
+                    }
+                })
+                .then(response => {
+                    console.log('Generate alerts response:', response.status);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Generate alerts data:', data);
+                    if (data.success) {
+                        closeAlertsModal();
+                        setTimeout(() => {
+                            location.reload();
+                        }, 300);
+                    } else {
+                        alert('Erreur: ' + (data.message || 'Une erreur est survenue'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Erreur:', error);
+                    alert('Erreur de communication avec le serveur');
+                });
+            }
+
+            // Animation de la cloche quand il y a des alertes
+            @if($activeAlertsCount > 0)
+                setInterval(function() {
+                    const bell = document.querySelector('.fa-bell');
+                    if (bell) {
+                        bell.classList.add('animate-pulse');
+                        setTimeout(() => {
+                            bell.classList.remove('animate-pulse');
+                        }, 1000);
+                    }
+                }, 10000); // Animation toutes les 10 secondes
+            @endif
+        </script>
+    @endif
 
     @stack('scripts')
 </body>

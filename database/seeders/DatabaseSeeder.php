@@ -41,5 +41,10 @@ class DatabaseSeeder extends Seeder
         $this->call([
             Sprint4Seeder::class,
         ]);
+
+        // Augmentation des stocks
+        $this->call([
+            IncreaseStockSeeder::class,
+        ]);
     }
 }

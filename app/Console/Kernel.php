@@ -27,5 +27,9 @@ class Kernel extends ConsoleKernel
     {
         $schedule->command('sync:blood-inventory')
                  ->hourly();
+        
+        // Génération automatique des alertes - Sprint 5
+        $schedule->command('blood:generate-alerts')
+                 ->everyFifteenMinutes();
     }
 } 

@@ -18,7 +18,7 @@
     </div>
 
     <section class="py-10 bg-gradient-to-b from-red-100 to-white text-center">
-        <div class="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
             <a href="{{ route('appointment.public') }}" class="transform transition-all duration-300 hover:scale-105">
                 <div class="bg-white rounded-lg shadow p-8 cursor-pointer hover:shadow-lg">
                     <div class="text-4xl font-extrabold text-red-600 mb-4">
@@ -28,6 +28,8 @@
                     <div class="text-gray-600 mt-2">Pour donner votre sang et sauver des vies</div>
                 </div>
             </a>
+            
+            @if(auth()->check() && in_array(auth()->user()->role, ['client', 'donor', 'patient']))
             <a href="{{ route('blood.reservation') }}" class="transform transition-all duration-300 hover:scale-105">
                 <div class="bg-white rounded-lg shadow p-8 cursor-pointer hover:shadow-lg">
                     <div class="text-4xl font-extrabold text-blue-600 mb-4">
@@ -37,6 +39,57 @@
                     <div class="text-gray-600 mt-2">Accéder aux stocks disponibles</div>
                 </div>
             </a>
+            
+            <a href="{{ route('dashboard.client') }}" class="transform transition-all duration-300 hover:scale-105">
+                <div class="bg-white rounded-lg shadow p-8 cursor-pointer hover:shadow-lg">
+                    <div class="text-4xl font-extrabold text-green-600 mb-4">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div class="text-2xl font-bold text-gray-800">Mon Dashboard</div>
+                    <div class="text-gray-600 mt-2">Suivi de mes commandes et réservations</div>
+                </div>
+            </a>
+            @elseif(auth()->check())
+            <a href="{{ route('login') }}" class="transform transition-all duration-300 hover:scale-105">
+                <div class="bg-white rounded-lg shadow p-8 cursor-pointer hover:shadow-lg">
+                    <div class="text-4xl font-extrabold text-blue-600 mb-4">
+                        <i class="fas fa-tint"></i>
+                    </div>
+                    <div class="text-2xl font-bold text-gray-800">Réserver des poches de sang</div>
+                    <div class="text-gray-600 mt-2">Connectez-vous pour accéder</div>
+                </div>
+            </a>
+            
+            <div class="transform transition-all duration-300 opacity-50">
+                <div class="bg-gray-200 rounded-lg shadow p-8 cursor-not-allowed">
+                    <div class="text-4xl font-extrabold text-gray-400 mb-4">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div class="text-2xl font-bold text-gray-500">Dashboard non disponible</div>
+                    <div class="text-gray-500 mt-2">Fonctionnalité réservée aux clients</div>
+                </div>
+            </div>
+            @else
+            <a href="{{ route('login') }}" class="transform transition-all duration-300 hover:scale-105">
+                <div class="bg-white rounded-lg shadow p-8 cursor-pointer hover:shadow-lg">
+                    <div class="text-4xl font-extrabold text-blue-600 mb-4">
+                        <i class="fas fa-tint"></i>
+                    </div>
+                    <div class="text-2xl font-bold text-gray-800">Réserver des poches de sang</div>
+                    <div class="text-gray-600 mt-2">Connectez-vous pour accéder</div>
+                </div>
+            </a>
+            
+            <a href="{{ route('login') }}" class="transform transition-all duration-300 hover:scale-105">
+                <div class="bg-white rounded-lg shadow p-8 cursor-pointer hover:shadow-lg">
+                    <div class="text-4xl font-extrabold text-green-600 mb-4">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div class="text-2xl font-bold text-gray-800">Mon Dashboard</div>
+                    <div class="text-gray-600 mt-2">Connectez-vous pour accéder</div>
+                </div>
+            </a>
+            @endif
         </div>
     </section>
 
