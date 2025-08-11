@@ -64,6 +64,12 @@ class User extends Authenticatable
         return $this->hasMany(Notification::class);
     }
 
+    // Relation avec les donations via le modèle Donor
+    public function donations()
+    {
+        return $this->hasManyThrough(DonationHistory::class, Donor::class, 'user_id', 'donor_id');
+    }
+
     // Scopes
     public function scopeDonors($query)
     {

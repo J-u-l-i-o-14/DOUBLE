@@ -2,40 +2,102 @@
 
 @section('title', 'Dashboard Manager')
 
-@section('content')
-<div class="py-12">
-    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-        <div class="bg-gray-50 overflow-hidden shadow-sm sm:rounded-lg">
-            <div class="p-6 text-gray-900">
-                <h2 class="text-2xl font-bold mb-6">Dashboard Manager</h2>
+@push('styles')
+<style>
+    .gradient-bg {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .card-hover {
+        transition: all 0.3s ease;
+    }
+    .card-hover:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+    }
+    .stat-card {
+        background: linear-gradient(45deg, #667eea, #764ba2);
+        color: white;
+        border-radius: 15px;
+        padding: 25px;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+    .stat-card::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -50%;
+        width: 100%;
+        height: 100%;
+        background: rgba(255,255,255,0.1);
+        transform: rotate(45deg);
+        transition: all 0.3s ease;
+    }
+    .stat-card:hover::before {
+        top: -10%;
+        right: -10%;
+    }
+</style>
+@endpush
 
-                <!-- Statistiques principales -->
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-8">
-                    <div class="bg-slate-50 border border-slate-200 p-4 rounded-lg">
-                        <div class="text-2xl font-bold text-slate-700">{{ $stats['total_campaigns'] }}</div>
-                        <div class="text-sm text-gray-600">Campagnes totales</div>
+@section('content')
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="bg-gray-50 overflow-hidden shadow-sm rounded-lg">
+                <div class="p-6 text-gray-900">
+                    <h2 class="text-2xl font-bold mb-6">Dashboard Manager</h2>
+
+                    <!-- Statistiques principales -->
+                    <div class="row g-3 mb-5" style="display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 12px;">
+                        
+                        <div class="col" style="min-width: 160px; max-width: 180px; flex: 1;">
+                            <div class="stat-card card-hover" style="background: linear-gradient(45deg, #27ae60, #2ecc71); padding: 12px; height: 90px;">
+                                <div class="d-flex align-items-center justify-content-between h-100">
+                                    <div style="flex: 1;">
+                                        <h4 class="h4 mb-0" style="font-size: 1.2rem;">{{ $stats['upcoming_campaigns'] }}</h4>
+                                        <p class="mb-0" style="font-size: 0.7rem; line-height: 1.2;">Campagnes à venir</p>
+                                    </div>
+                                    <i class="fas fa-calendar-alt fa-lg opacity-50" style="font-size: 1.2rem;"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col" style="min-width: 160px; max-width: 180px; flex: 1;">
+                            <div class="stat-card card-hover" style="background: linear-gradient(45deg, #f39c12, #e67e22); padding: 12px; height: 90px;">
+                                <div class="d-flex align-items-center justify-content-between h-100">
+                                    <div style="flex: 1;">
+                                        <h4 class="h4 mb-0" style="font-size: 1.2rem;">{{ $stats['pending_appointments'] }}</h4>
+                                        <p class="mb-0" style="font-size: 0.7rem; line-height: 1.2;">RDV en attente</p>
+                                    </div>
+                                    <i class="fas fa-clock fa-lg opacity-50" style="font-size: 1.2rem;"></i>
+                                </div>
+                            </div>
+                        </div>
+                       
+                        <div class="col" style="min-width: 160px; max-width: 180px; flex: 1;">
+                            <div class="stat-card card-hover" style="background: linear-gradient(45deg, #e74c3c, #c0392b); padding: 12px; height: 90px;">
+                                <div class="d-flex align-items-center justify-content-between h-100">
+                                    <div style="flex: 1;">
+                                        <h4 class="h4 mb-0" style="font-size: 1.2rem;">{{ $stats['total_blood_bags'] }}</h4>
+                                        <p class="mb-0" style="font-size: 0.7rem; line-height: 1.2;">Poches disponibles</p>
+                                    </div>
+                                    <i class="fas fa-tint fa-lg opacity-50" style="font-size: 1.2rem;"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col" style="min-width: 160px; max-width: 180px; flex: 1;">
+                            <div class="stat-card card-hover" style="background: linear-gradient(45deg, #34495e, #2c3e50); padding: 12px; height: 90px;">
+                                <div class="d-flex align-items-center justify-content-between h-100">
+                                    <div style="flex: 1;">
+                                        <h4 class="h4 mb-0" style="font-size: 1.2rem;">{{ $stats['total_reservations'] }}</h4>
+                                        <p class="mb-0" style="font-size: 0.7rem; line-height: 1.2;">Réservations totales</p>
+                                    </div>
+                                    <i class="fas fa-list-alt fa-lg opacity-50" style="font-size: 1.2rem;"></i>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="bg-gray-50 border border-gray-200 p-4 rounded-lg">
-                        <div class="text-2xl font-bold text-gray-700">{{ $stats['upcoming_campaigns'] }}</div>
-                        <div class="text-sm text-gray-600">Campagnes à venir</div>
-                    </div>
-                    <div class="bg-stone-50 border border-stone-200 p-4 rounded-lg">
-                        <div class="text-2xl font-bold text-stone-700">{{ $stats['pending_appointments'] }}</div>
-                        <div class="text-sm text-gray-600">RDV en attente</div>
-                    </div>
-                    <div class="bg-zinc-50 border border-zinc-200 p-4 rounded-lg">
-                        <div class="text-2xl font-bold text-zinc-700">{{ $stats['total_donors'] }}</div>
-                        <div class="text-sm text-gray-600">Donneurs</div>
-                    </div>
-                    <div class="bg-neutral-50 border border-neutral-200 p-4 rounded-lg">
-                        <div class="text-2xl font-bold text-neutral-700">{{ $stats['total_blood_bags'] }}</div>
-                        <div class="text-sm text-gray-600">Poches disponibles</div>
-                    </div>
-                    <div class="bg-slate-50 border border-slate-200 p-4 rounded-lg">
-                        <div class="text-2xl font-bold text-slate-700">{{ $stats['total_reservations'] }}</div>
-                        <div class="text-sm text-gray-600">Réservations totales</div>
-                    </div>
-                </div>
 
                 <!-- Statistiques des réservations -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
@@ -59,9 +121,14 @@
                         <div class="text-2xl font-bold text-green-700">💵 {{ number_format($stats['monthly_revenue']) }} F CFA</div>
                         <div class="text-sm text-green-600">📅 Revenus ce mois</div>
                     </div>
-                    <div class="bg-teal-50 border border-teal-200 p-4 rounded-lg">
-                        <div class="text-2xl font-bold text-teal-700">⏳ {{ number_format($stats['pending_revenue']) }} F CFA</div>
-                        <div class="text-sm text-teal-600">💳 Revenus en attente</div>
+                    <div class="bg-red-50 border border-red-200 p-4 rounded-lg" style="background-color: #fef2f2; border-color: #fecaca;">
+                        <div class="text-2xl font-bold text-red-700" style="color: #dc2626;">⏳ {{ number_format($stats['pending_revenue']) }} F CFA</div>
+                        <div class="text-sm text-red-600" style="color: #dc2626;">💳 Revenus en attente</div>
+                        @if($stats['pending_revenue'] > 0)
+                            <div class="text-xs text-red-500 mt-1" style="color: #ef4444;">
+                                <i class="fas fa-exclamation-triangle"></i> Nécessite suivi
+                            </div>
+                        @endif
                     </div>
                 </div>
 
@@ -239,42 +306,73 @@
                                 </thead>
                                 <tbody class="bg-white divide-y divide-gray-200">
                                     @forelse($recentTransactions as $transaction)
-                                    <tr>
+                                    @php
+                                        $reservationStatus = $transaction->reservationRequest ? $transaction->reservationRequest->status : 'pending';
+                                        $isFinalized = in_array($reservationStatus, ['cancelled', 'expired', 'terminated', 'completed']);
+                                        $isCancelledOrExpired = in_array($reservationStatus,['cancelled','expired']);
+                                        $total = $transaction->original_price ?? $transaction->total_amount;
+                                        if($transaction->payment_status === 'partial') {
+                                            $deposit = $transaction->deposit_amount ?? ($total * 0.5);
+                                        } elseif($transaction->payment_status === 'paid' && in_array($reservationStatus,['completed','terminated'])) {
+                                            $deposit = $total;
+                                        } elseif($transaction->payment_status === 'paid' && $isCancelledOrExpired) {
+                                            $deposit = $transaction->deposit_amount ?? ($total * 0.5);
+                                            if($deposit >= $total) { $deposit = $total * 0.5; }
+                                        } elseif($transaction->payment_status === 'pending') {
+                                            $deposit = 0;
+                                        } else {
+                                            $deposit = $transaction->deposit_amount ?? ($total * 0.5);
+                                        }
+                                        $remaining = max($total - $deposit,0);
+                                    @endphp
+                                    <tr class="{{ $isFinalized ? 'bg-red-50' : '' }}">
                                         <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                             {{ $transaction->user->name }}
                                         </td>
                                         <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                                            @if($transaction->payment_status === 'partial')
+                                            @if($transaction->payment_status === 'partial' || ($transaction->payment_status==='paid' && $deposit < $total))
                                                 <div>
                                                     <span class="font-bold text-orange-600">
-                                                        {{ number_format($transaction->deposit_amount ?? ($transaction->total_amount * 0.5)) }} F CFA
+                                                        {{ number_format($deposit) }} F CFA
                                                     </span>
                                                     <span class="text-xs text-gray-500">(Acompte)</span>
                                                     <br>
-                                                    <span class="text-xs text-gray-500">
-                                                        Total: {{ number_format($transaction->total_amount) }} F CFA
-                                                    </span>
+                                                    <span class="text-xs text-gray-500">Total: {{ number_format($total) }} F CFA</span>
+                                                    @if($isCancelledOrExpired && $remaining>0)
+                                                        <br><span class="text-xs text-red-600 line-through">Reste: {{ number_format($remaining) }} F CFA</span>
+                                                        <br><span class="text-[10px] text-red-500">🚫 Non récupérable</span>
+                                                    @elseif($remaining>0 && !$isFinalized)
+                                                        <br><span class="text-xs text-orange-600">Reste: {{ number_format($remaining) }} F CFA</span>
+                                                    @elseif($remaining===0 && $deposit>0)
+                                                        <br><span class="text-xs text-green-600">Soldé</span>
+                                                    @endif
                                                 </div>
+                                            @elseif($isFinalized && $transaction->payment_status !== 'paid')
+                                                <span class="line-through text-red-600">{{ number_format($total) }} F CFA</span>
+                                                <br><span class="text-xs text-red-500">🚫 Annulé</span>
                                             @else
-                                                {{ number_format($transaction->total_amount) }} F CFA
+                                                {{ number_format($total) }} F CFA
                                             @endif
                                         </td>
                                         <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                                             {{ $transaction->created_at->format('d/m/Y H:i') }}
                                         </td>
                                         <td class="px-4 py-4 whitespace-nowrap">
-                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                                                {{ $transaction->payment_status === 'completed' ? 'bg-green-100 text-green-800' : '' }}
-                                                {{ $transaction->payment_status === 'partial' ? 'bg-yellow-100 text-yellow-800' : '' }}
-                                                {{ $transaction->payment_status === 'failed' ? 'bg-red-100 text-red-800' : '' }}">
-                                                @if($transaction->payment_status === 'completed')
-                                                    💰 {{ ucfirst($transaction->payment_status) }}
-                                                @elseif($transaction->payment_status === 'partial')
-                                                    💳 {{ ucfirst($transaction->payment_status) }}
-                                                @else
-                                                    {{ ucfirst($transaction->payment_status) }}
+                                            @if($isCancelledOrExpired && $transaction->payment_status==='paid')
+                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Réservation {{ $reservationStatus==='cancelled'?'annulée':'expirée' }}</span>
+                                                @if($remaining>0)
+                                                    <div class="text-xs text-red-600 mt-1">Reste non récupérable: {{ number_format($remaining) }} F CFA</div>
                                                 @endif
-                                            </span>
+                                            @elseif($isFinalized && $transaction->payment_status !== 'paid')
+                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">🚫 Réservation {{ $reservationStatus === 'cancelled' ? 'annulée' : ($reservationStatus === 'expired' ? 'expirée' : 'terminée') }}</span>
+                                                @if($transaction->payment_status === 'partial' && $remaining>0)
+                                                    <div class="text-xs text-red-600 mt-1">Reste non récupérable: {{ number_format($remaining) }} F CFA</div>
+                                                @endif
+                                            @elseif($transaction->payment_status === 'partial' || ($transaction->payment_status==='paid' && $deposit<$total))
+                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">💳 Acompte payé</span>
+                                            @else
+                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Payé</span>
+                                            @endif
                                         </td>
                                     </tr>
                                     @empty
@@ -411,4 +509,9 @@
         }
     });
 </script>
-@endsection 
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+@endsection

@@ -3,6 +3,9 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Http\Requests\ReservationStoreRequest;
+use App\Http\Requests\ReservationUpdateRequest;
+use App\Http\Requests\ReservationBulkUpdateRequest;
 use App\Models\ReservationRequest;
 use App\Models\ReservationItem;
 use App\Models\ReservationBloodBag;
@@ -17,12 +20,33 @@ class ReservationController extends Controller
     public function index(Request $request)
     {
         $user = auth()->user();
-        $query = ReservationRequest::with(['user', 'center', 'items.bloodType']);
+        $query = ReservationRequest::with(['user', 'center', 'items.bloodType', 'order']);
 
         if ($user->role === 'client') {
             $query->where('user_id', $user->id);
         } elseif (in_array($user->role, ['admin', 'manager'])) {
             $query->where('center_id', $user->center_id);
+        }
+
+        // Recherche par ID (réservation ou commande)
+        if ($request->filled('search')) {
+            $searchTerm = $request->search;
+            $query->where(function($q) use ($searchTerm) {
+                // Recherche par ID de réservation
+                $q->where('id', 'like', '%' . $searchTerm . '%')
+                  // Ou par ID de commande associée
+                  ->orWhereHas('order', function($orderQuery) use ($searchTerm) {
+                      $orderQuery->where('id', 'like', '%' . $searchTerm . '%');
+                  });
+            });
+        }
+
+        // Recherche par nom de client
+        if ($request->filled('client_name')) {
+            $query->whereHas('user', function($userQuery) use ($request) {
+                $userQuery->where('name', 'like', '%' . $request->client_name . '%')
+                          ->orWhere('email', 'like', '%' . $request->client_name . '%');
+            });
         }
 
         // Filtres de recherche
@@ -52,23 +76,20 @@ class ReservationController extends Controller
         return view('reservations.create', compact('centers', 'bloodTypes'));
     }
 
-    public function store(Request $request)
+    public function store(ReservationStoreRequest $request)
     {
         $user = auth()->user();
-        $request->validate([
-            'items' => 'required|array|min:1',
-            'items.*.blood_type_id' => 'required|exists:blood_types,id',
-            'items.*.quantity' => 'required|integer|min:1',
-        ]);
-        $centerId = $user->role === 'client' ? $request->center_id : $user->center_id;
+        $validatedData = $request->validated();
+        
+        $centerId = $user->role === 'client' ? $validatedData['center_id'] : $user->center_id;
         
         // Vérifier la disponibilité et réserver temporairement les poches
         $totalAmount = 0;
         $reservedBloodBags = []; // Pour tracker les poches réservées
         
         try {
-            \DB::transaction(function () use ($request, $centerId, $user, &$totalAmount, &$reservedBloodBags) {
-                foreach ($request->items as $item) {
+            \DB::transaction(function () use ($validatedData, $centerId, $user, &$totalAmount, &$reservedBloodBags) {
+                foreach ($validatedData['items'] as $item) {
                     $available = CenterBloodTypeInventory::where('center_id', $centerId)
                         ->where('blood_type_id', $item['blood_type_id'])
                         ->value('available_quantity') ?? 0;
@@ -248,7 +269,7 @@ class ReservationController extends Controller
         }
         
         $request->validate([
-            'status' => 'required|in:pending,confirmed,cancelled,completed,expired',
+            'status' => 'required|in:pending,confirmed,cancelled,completed,expired,terminated',
             'note' => 'nullable|string|max:1000'
         ]);
         
@@ -279,7 +300,12 @@ class ReservationController extends Controller
         
         // Si la réservation est complétée (retrait effectué), finaliser le paiement
         if ($request->status === 'completed' && $oldStatus !== 'completed') {
-            $this->completePayment($reservation);
+            $this->completeReservation($reservation);
+        }
+        
+        // Si la réservation passe à terminé, marquer comme finalisée
+        if ($request->status === 'terminated' && $oldStatus !== 'terminated') {
+            $this->terminateReservation($reservation);
         }
         
         return response()->json([
@@ -290,27 +316,85 @@ class ReservationController extends Controller
     }
 
     /**
-     * Libérer les poches de sang réservées
+     * Libérer les poches de sang réservées et restaurer le stock
      */
     private function releaseBloodBags(ReservationRequest $reservation)
     {
-        $bloodBagIds = $reservation->reservationBloodBags()->pluck('blood_bag_id');
+        \Log::info('Début libération des poches de sang', [
+            'reservation_id' => $reservation->id,
+            'status' => $reservation->status
+        ]);
         
-        // Remettre les poches comme disponibles
-        BloodBag::whereIn('id', $bloodBagIds)->update(['status' => 'available']);
-        
-        // Mettre à jour l'inventaire
-        $bloodTypeIds = BloodBag::whereIn('id', $bloodBagIds)->distinct()->pluck('blood_type_id');
-        
-        foreach ($bloodTypeIds as $bloodTypeId) {
-            $this->updateInventory($reservation->center_id, $bloodTypeId);
+        try {
+            \DB::transaction(function () use ($reservation) {
+                $bloodBagIds = $reservation->bloodBags()->pluck('blood_bag_id');
+                
+                if ($bloodBagIds->isNotEmpty()) {
+                    // Remettre les poches comme disponibles
+                    $releasedCount = BloodBag::whereIn('id', $bloodBagIds)
+                        ->where('status', 'reserved')
+                        ->update(['status' => 'available']);
+                    
+                    \Log::info('Poches libérées', [
+                        'reservation_id' => $reservation->id,
+                        'blood_bag_ids' => $bloodBagIds->toArray(),
+                        'released_count' => $releasedCount
+                    ]);
+                    
+                    // Mettre à jour l'inventaire pour chaque type sanguin
+                    $bloodTypeIds = BloodBag::whereIn('id', $bloodBagIds)->distinct()->pluck('blood_type_id');
+                    
+                    foreach ($bloodTypeIds as $bloodTypeId) {
+                        $availableCountBefore = CenterBloodTypeInventory::where('center_id', $reservation->center_id)
+                            ->where('blood_type_id', $bloodTypeId)
+                            ->value('available_quantity') ?? 0;
+                        
+                        $this->updateInventory($reservation->center_id, $bloodTypeId);
+                        
+                        $availableCountAfter = CenterBloodTypeInventory::where('center_id', $reservation->center_id)
+                            ->where('blood_type_id', $bloodTypeId)
+                            ->value('available_quantity') ?? 0;
+                        
+                        \Log::info('Inventaire mis à jour', [
+                            'reservation_id' => $reservation->id,
+                            'center_id' => $reservation->center_id,
+                            'blood_type_id' => $bloodTypeId,
+                            'available_before' => $availableCountBefore,
+                            'available_after' => $availableCountAfter,
+                            'difference' => $availableCountAfter - $availableCountBefore
+                        ]);
+                    }
+                    
+                    // Supprimer les liens de réservation
+                    $reservation->bloodBags()->delete();
+                    
+                    \Log::info('Liens de réservation supprimés', [
+                        'reservation_id' => $reservation->id
+                    ]);
+                } else {
+                    \Log::info('Aucune poche de sang à libérer', [
+                        'reservation_id' => $reservation->id
+                    ]);
+                }
+            });
+            
+            \Log::info('Fin libération des poches de sang - Succès', [
+                'reservation_id' => $reservation->id
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Erreur lors de la libération des poches de sang', [
+                'reservation_id' => $reservation->id,
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
         }
     }
 
     /**
      * Mettre à jour plusieurs réservations en lot
      */
-    public function bulkUpdateStatus(Request $request)
+    public function bulkUpdateStatus(ReservationBulkUpdateRequest $request)
     {
         $user = auth()->user();
         
@@ -318,13 +402,9 @@ class ReservationController extends Controller
             return response()->json(['success' => false, 'message' => 'Accès non autorisé'], 403);
         }
         
-        $request->validate([
-            'reservation_ids' => 'required|array',
-            'reservation_ids.*' => 'exists:reservation_requests,id',
-            'status' => 'required|in:confirmed,cancelled,completed,expired'
-        ]);
+        $validatedData = $request->validated();
         
-        $query = ReservationRequest::whereIn('id', $request->reservation_ids);
+        $query = ReservationRequest::whereIn('id', $validatedData['reservation_ids']);
         
         // Si c'est un manager, filtrer par centre
         if ($user->role === 'manager') {
@@ -336,17 +416,17 @@ class ReservationController extends Controller
         foreach ($reservations as $reservation) {
             $oldStatus = $reservation->status;
             $reservation->update([
-                'status' => $request->status,
+                'status' => $validatedData['status'],
                 'updated_by' => $user->id
             ]);
             
             // Si la réservation est annulée ou expirée, libérer les poches de sang
-            if (in_array($request->status, ['cancelled', 'expired']) && $oldStatus !== $request->status) {
+            if (in_array($validatedData['status'], ['cancelled', 'expired']) && $oldStatus !== $validatedData['status']) {
                 $this->releaseBloodBags($reservation);
             }
             
             // Si la réservation est complétée (retrait effectué), finaliser le paiement
-            if ($request->status === 'completed' && $oldStatus !== 'completed') {
+            if ($validatedData['status'] === 'completed' && $oldStatus !== 'completed') {
                 $this->completePayment($reservation);
             }
         }
@@ -394,6 +474,11 @@ class ReservationController extends Controller
             ->where('status', 'available')
             ->count();
 
+        $reservedCount = BloodBag::where('center_id', $centerId)
+            ->where('blood_type_id', $bloodTypeId)
+            ->where('status', 'reserved')
+            ->count();
+
         CenterBloodTypeInventory::updateOrCreate(
             [
                 'center_id' => $centerId,
@@ -401,7 +486,186 @@ class ReservationController extends Controller
             ],
             [
                 'available_quantity' => $availableCount,
+                'reserved_quantity' => $reservedCount,
             ]
         );
+    }
+
+    /**
+     * Finaliser une réservation complétée
+     */
+    private function completeReservation(ReservationRequest $reservation)
+    {
+        \Log::info('Finalisation de la réservation', ['reservation_id' => $reservation->id]);
+        
+        try {
+            \DB::transaction(function () use ($reservation) {
+                // Marquer les poches comme transfusées
+                $bloodBagIds = $reservation->bloodBags()->pluck('blood_bag_id');
+                
+                if ($bloodBagIds->isNotEmpty()) {
+                    BloodBag::whereIn('id', $bloodBagIds)
+                        ->update(['status' => 'transfused']);
+                    
+                    \Log::info('Poches marquées comme transfusées', [
+                        'reservation_id' => $reservation->id,
+                        'blood_bag_count' => $bloodBagIds->count()
+                    ]);
+                }
+                
+                // Mettre à jour la commande associée
+                if ($reservation->order) {
+                    // Seules les réservations COMPLETED doivent être marquées comme payées intégralement
+                    $reservation->order->update([
+                        'status' => 'completed',
+                        'payment_status' => 'paid',
+                        'deposit_amount' => $reservation->order->total_amount,
+                        'remaining_amount' => 0
+                    ]);
+                }
+                
+                // Mettre à jour les inventaires
+                $bloodTypeIds = BloodBag::whereIn('id', $bloodBagIds)->distinct()->pluck('blood_type_id');
+                foreach ($bloodTypeIds as $bloodTypeId) {
+                    $this->updateInventory($reservation->center_id, $bloodTypeId);
+                }
+            });
+            
+        } catch (\Exception $e) {
+            \Log::error('Erreur lors de la finalisation de réservation', [
+                'reservation_id' => $reservation->id,
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Terminer une réservation (statut final)
+     */
+    private function terminateReservation(ReservationRequest $reservation)
+    {
+        \Log::info('Terminaison de la réservation', ['reservation_id' => $reservation->id]);
+        
+        try {
+            \DB::transaction(function () use ($reservation) {
+                if ($reservation->order) {
+                    // Statut final (terminé) => paiement intégral confirmé
+                    $reservation->order->update([
+                        'status' => 'terminated',
+                        'payment_status' => 'paid',
+                        'deposit_amount' => $reservation->order->total_amount,
+                        'remaining_amount' => 0
+                    ]);
+                }
+                
+                $reservation->update([
+                    'manager_notes' => ($reservation->manager_notes ?? '') . ' | Terminée le ' . \Carbon\Carbon::now()->format('d/m/Y H:i')
+                ]);
+            });
+            
+        } catch (\Exception $e) {
+            \Log::error('Erreur lors de la terminaison de réservation', [
+                'reservation_id' => $reservation->id,
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Vérifier et marquer les réservations expirées
+     */
+    public function checkExpiredReservations()
+    {
+        try {
+            $expiredReservations = ReservationRequest::where('status', 'confirmed')
+                ->where('expires_at', '<', \Carbon\Carbon::now())
+                ->get();
+
+            $count = 0;
+            foreach ($expiredReservations as $reservation) {
+                \DB::transaction(function () use ($reservation) {
+                    $reservation->update([
+                        'status' => 'expired',
+                        'manager_notes' => ($reservation->manager_notes ?? '') . ' | Expirée automatiquement le ' . \Carbon\Carbon::now()->format('d/m/Y H:i')
+                    ]);
+                    
+                    // Libérer les poches de sang
+                    $this->releaseBloodBags($reservation);
+                    
+                    // Mettre à jour la commande associée et éliminer le montant restant
+                    if ($reservation->order) {
+                        $reservation->order->update([
+                            'status' => 'expired'
+                            // On ne touche pas à payment_status, deposit_amount ni remaining_amount
+                        ]);
+                    }
+                });
+                
+                $count++;
+            }
+
+            \Log::info('Vérification des expirations terminée', ['expired_count' => $count]);
+            
+            return response()->json([
+                'success' => true,
+                'message' => "{$count} réservations expirées traitées",
+                'expired_count' => $count
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Erreur lors de la vérification des expirations', ['error' => $e->getMessage()]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la vérification des expirations: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Annuler une réservation
+     */
+    public function cancel(ReservationRequest $reservation)
+    {
+        \Log::info('Annulation de la réservation', ['reservation_id' => $reservation->id]);
+        
+        try {
+            \DB::transaction(function () use ($reservation) {
+                // Libérer les poches de sang
+                $this->releaseBloodBags($reservation);
+                
+                // Mettre à jour la réservation
+                $reservation->update([
+                    'status' => 'cancelled',
+                    'manager_notes' => ($reservation->manager_notes ?? '') . ' | Annulée le ' . \Carbon\Carbon::now()->format('d/m/Y H:i')
+                ]);
+                
+                // Mettre à jour la commande associée et éliminer le montant restant
+                if ($reservation->order) {
+                    $reservation->order->update([
+                        'status' => 'cancelled'
+                        // On conserve payment_status, deposit_amount et remaining_amount
+                    ]);
+                }
+            });
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Réservation annulée avec succès'
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Erreur lors de l\'annulation de réservation', [
+                'reservation_id' => $reservation->id,
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de l\'annulation: ' . $e->getMessage()
+            ]);
+        }
     }
 }

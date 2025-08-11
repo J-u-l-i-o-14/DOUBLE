@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test d'affichage des paiements pour réservations finalisées</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .line-through {
+            text-decoration: line-through;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-6">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-2xl font-bold mb-6 text-center">🔍 Test d'affichage des paiements pour réservations finalisées</h1>
+        
+        <!-- Scénario 1: Réservation annulée avec acompte payé -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-lg font-semibold mb-4">📋 Scénario 1: Réservation annulée avec acompte payé</h2>
+            <div class="grid grid-cols-2 gap-4">
+                <div class="bg-green-50 p-3 rounded-lg">
+                    <label class="text-sm font-medium text-green-700">Acompte payé</label>
+                    <p class="text-lg font-semibold text-green-800">50,000 F CFA</p>
+                    <p class="text-xs text-green-600">✓ Payé lors de la commande</p>
+                </div>
+                
+                <div class="bg-red-50 p-3 rounded-lg border border-red-200">
+                    <label class="text-sm font-medium text-red-700">Reste à payer</label>
+                    <p class="text-lg font-semibold text-red-800">
+                        <span class="line-through">50,000 F CFA</span>
+                    </p>
+                    <p class="text-xs text-red-600">🚫 Paiement non récupérable</p>
+                </div>
+            </div>
+            <div class="mt-4 p-3 bg-red-50 rounded">
+                <span class="text-sm text-red-700">⚠️ Réservation annulée - Statut: cancelled</span>
+            </div>
+        </div>
+
+        <!-- Scénario 2: Réservation expirée sans paiement -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-lg font-semibold mb-4">📋 Scénario 2: Réservation expirée sans paiement</h2>
+            <div class="bg-red-50 p-3 rounded-lg">
+                <div class="text-sm font-medium text-red-800">
+                    <i class="fas fa-times-circle mr-1"></i><span class="line-through">75,000 F CFA</span>
+                </div>
+                <div class="text-xs text-red-700">🚫 Paiement annulé</div>
+            </div>
+            <div class="mt-4 p-3 bg-red-50 rounded">
+                <span class="text-sm text-red-700">⚠️ Réservation expirée - Statut: expired</span>
+            </div>
+        </div>
+
+        <!-- Scénario 3: Réservation terminée complètement payée -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-lg font-semibold mb-4">📋 Scénario 3: Réservation terminée complètement payée</h2>
+            <div class="bg-green-50 p-3 rounded-lg">
+                <div class="text-sm font-medium text-green-800">
+                    <i class="fas fa-check-circle mr-1"></i>125,000 F CFA
+                </div>
+                <div class="text-xs text-green-700">Paiement complet</div>
+            </div>
+            <div class="mt-4 p-3 bg-green-50 rounded">
+                <span class="text-sm text-green-700">✅ Réservation terminée - Statut: completed</span>
+            </div>
+        </div>
+
+        <!-- Scénario 4: Transactions récentes dans le dashboard manager -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-lg font-semibold mb-4">📋 Transactions récentes - Dashboard Manager</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Client</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Montant</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        <!-- Transaction normale -->
+                        <tr>
+                            <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                Jean Dupont
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                                <div>
+                                    <span class="font-bold text-orange-600">45,000 F CFA</span>
+                                    <span class="text-xs text-gray-500">(Acompte)</span>
+                                    <br>
+                                    <span class="text-xs text-gray-500">Total: 90,000 F CFA</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                10/08/2025 10:30
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap">
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                    💳 Partial
+                                </span>
+                            </td>
+                        </tr>
+                        <!-- Transaction annulée -->
+                        <tr class="bg-red-50">
+                            <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                Marie Martin
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                                <div>
+                                    <span class="font-bold text-orange-600">25,000 F CFA</span>
+                                    <span class="text-xs text-gray-500">(Acompte)</span>
+                                    <br>
+                                    <span class="text-xs text-gray-500">Total: 50,000 F CFA</span>
+                                    <br>
+                                    <span class="text-xs text-red-600 line-through">
+                                        Reste: 25,000 F CFA
+                                    </span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                09/08/2025 14:20
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap">
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                                    🚫 Annulé
+                                </span>
+                            </td>
+                        </tr>
+                        <!-- Transaction expirée sans paiement -->
+                        <tr class="bg-red-50">
+                            <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                Paul Durand
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                                <span class="line-through text-red-600">
+                                    60,000 F CFA
+                                </span>
+                                <br>
+                                <span class="text-xs text-red-500">🚫 Annulé</span>
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                08/08/2025 16:45
+                            </td>
+                            <td class="px-4 py-4 whitespace-nowrap">
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                                    🚫 Annulé
+                                </span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Légende -->
+        <div class="bg-blue-50 rounded-lg p-4">
+            <h3 class="text-lg font-semibold mb-2">📖 Légende des modifications</h3>
+            <ul class="space-y-2 text-sm">
+                <li>✅ <strong>Acompte payé :</strong> Reste visible pour l'historique</li>
+                <li>🚫 <strong>Reste à payer barré :</strong> Non récupérable pour réservations annulées/expirées</li>
+                <li>🔴 <strong>Arrière-plan rouge :</strong> Transactions de réservations finalisées</li>
+                <li>⚠️ <strong>Messages explicites :</strong> "Paiement non récupérable" / "Paiement annulé"</li>
+                <li>💰 <strong>Statuts visuels :</strong> Icônes et couleurs distinctives</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

@@ -18,8 +18,8 @@ class UserController extends Controller
             abort(403, 'Accès non autorisé');
         }
 
-        // Admin voit tout, manager voit seulement son centre
-        if ($user->role === 'manager') {
+        // Admin et manager voient seulement leur centre
+        if (in_array($user->role, ['admin', 'manager'])) {
             $query->where('center_id', $user->center_id);
         }
 
@@ -34,8 +34,16 @@ class UserController extends Controller
                   ->orWhere('email', 'like', "%{$search}%");
             });
         }
+        
         $users = $query->latest()->paginate(15);
-        return view('users.index', compact('users'));
+        
+        // Récupérer la liste des centres pour les filtres
+        $centers = [];
+        if ($user->role === 'admin') {
+            $centers = \App\Models\Center::all();
+        }
+        
+        return view('users.index', compact('users', 'centers'));
     }
 
     public function create()
@@ -158,10 +166,37 @@ class UserController extends Controller
 
     public function destroy(User $user)
     {
+        $authUser = auth()->user();
+        
+        // Sécurité : Seuls admin et manager peuvent supprimer des utilisateurs
+        if (!in_array($authUser->role, ['admin', 'manager'])) {
+            abort(403, 'Accès non autorisé');
+        }
+
+        // Manager ne peut supprimer que les utilisateurs de son centre
+        if ($authUser->role === 'manager' && $user->center_id !== $authUser->center_id) {
+            abort(403, 'Vous ne pouvez supprimer que les utilisateurs de votre centre');
+        }
+
         // Empêcher la suppression si l'utilisateur a des relations importantes
-        if ($user->donations()->exists() || $user->transfusions()->exists() || $user->organizedCampaigns()->exists()) {
+        $hasRelations = false;
+        $relationMessages = [];
+
+        // Vérifier les donations via le donneur
+        if ($user->donations()->exists()) {
+            $hasRelations = true;
+            $relationMessages[] = 'donations';
+        }
+
+        // Vérifier les réservations
+        if ($user->reservationRequests()->exists()) {
+            $hasRelations = true;
+            $relationMessages[] = 'réservations';
+        }
+
+        if ($hasRelations) {
             return redirect()->route('users.index')
-                ->with('error', 'Impossible de supprimer cet utilisateur car il a des données associées.');
+                ->with('error', 'Impossible de supprimer cet utilisateur car il a des ' . implode(', ', $relationMessages) . ' associées.');
         }
 
         $user->delete();

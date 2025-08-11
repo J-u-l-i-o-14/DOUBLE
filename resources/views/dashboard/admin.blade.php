@@ -128,6 +128,25 @@
             @if($recentTransactions->count() > 0)
                 <div class="space-y-3">
                     @foreach($recentTransactions->take(5) as $transaction)
+                        @php
+                            $reservationStatus = $transaction->reservationRequest->status ?? null;
+                            $isCancelledOrExpired = in_array($reservationStatus, ['cancelled','expired']);
+                            $isFinalized = in_array($reservationStatus, ['cancelled','expired','terminated','completed']);
+                            $total = $transaction->original_price ?? $transaction->total_amount;
+                            if($transaction->payment_status === 'partial') {
+                                $deposit = $transaction->deposit_amount ?? ($total * 0.5);
+                            } elseif($transaction->payment_status === 'paid' && in_array($reservationStatus,['completed','terminated'])) {
+                                $deposit = $total;
+                            } elseif($transaction->payment_status === 'paid' && $isCancelledOrExpired) {
+                                $deposit = $transaction->deposit_amount ?? ($total * 0.5);
+                                if($deposit >= $total) { $deposit = $total * 0.5; }
+                            } elseif($transaction->payment_status === 'pending') {
+                                $deposit = 0;
+                            } else {
+                                $deposit = $transaction->deposit_amount ?? ($total * 0.5);
+                            }
+                            $remaining = max($total - $deposit,0);
+                        @endphp
                         <div class="flex justify-between items-center border-b border-gray-100 pb-2">
                             <div>
                                 <p class="font-medium text-gray-900">{{ $transaction->user->name ?? 'Client' }}</p>
@@ -136,22 +155,29 @@
                                 </p>
                                 <p class="text-xs text-gray-400">{{ $transaction->created_at->format('d/m/Y H:i') }}</p>
                             </div>
-                            <div class="text-right">
-                                @if($transaction->payment_status === 'partial')
-                                    <p class="font-bold text-orange-600">
-                                        {{ number_format($transaction->deposit_amount ?? ($transaction->total_amount * 0.5), 0, ',', ' ') }} F CFA
-                                        <span class="text-xs text-gray-500">(Acompte 50%)</span>
-                                    </p>
-                                    <p class="text-xs text-gray-500">
-                                        Total: {{ number_format($transaction->total_amount, 0, ',', ' ') }} F CFA
-                                    </p>
-                                @else
-                                    <p class="font-bold text-green-600">{{ number_format($transaction->total_amount, 0, ',', ' ') }} F CFA</p>
+                            <div class="text-right space-y-0.5">
+                                <p class="font-bold text-gray-900">Total: {{ number_format($total,0,',',' ') }} F CFA</p>
+                                <p class="text-sm text-green-600">
+                                    {{ $deposit >= $total && in_array($reservationStatus,['completed','terminated']) ? 'Payé intégralement' : 'Acompte payé' }}: {{ number_format($deposit,0,',',' ') }} F CFA
+                                </p>
+                                @if($remaining>0 && $isCancelledOrExpired)
+                                    <p class="text-xs text-red-600 line-through">Reste: {{ number_format($remaining,0,',',' ') }} F CFA</p>
+                                    <p class="text-[10px] text-red-500">🚫 Non récupérable</p>
+                                @elseif($remaining>0 && !$isFinalized)
+                                    <p class="text-xs text-orange-600">Reste: {{ number_format($remaining,0,',',' ') }} F CFA</p>
+                                @elseif($remaining===0 && $deposit>0)
+                                    <p class="text-xs text-green-600">Soldé</p>
                                 @endif
                                 <span class="text-xs px-2 py-1 rounded-full 
-                                    {{ $transaction->payment_status === 'paid' ? 'bg-green-100 text-green-800' : 
-                                       ($transaction->payment_status === 'partial' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800') }}">
-                                    {{ $transaction->payment_status_label }}
+                                    @if($isCancelledOrExpired && $transaction->payment_status==='paid') bg-red-100 text-red-800
+                                    @elseif($transaction->payment_status === 'paid') bg-green-100 text-green-800
+                                    @elseif($transaction->payment_status === 'partial') bg-yellow-100 text-yellow-800
+                                    @elseif($transaction->payment_status === 'pending') bg-blue-100 text-blue-800
+                                    @else bg-red-100 text-red-800 @endif">
+                                    @if($isCancelledOrExpired && $transaction->payment_status==='paid') Réservation {{ $reservationStatus==='cancelled'?'annulée':'expirée' }}
+                                    @elseif($transaction->payment_status==='partial') Acompte payé
+                                    @elseif($transaction->payment_status==='paid') Payé
+                                    @else {{ ucfirst($transaction->payment_status) }} @endif
                                 </span>
                             </div>
                         </div>

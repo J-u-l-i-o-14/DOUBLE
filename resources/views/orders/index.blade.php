@@ -79,20 +79,28 @@
                                     @elseif($reservationStatus === 'confirmed') bg-blue-100 text-blue-800
                                     @elseif($reservationStatus === 'completed') bg-green-100 text-green-800
                                     @elseif($reservationStatus === 'cancelled') bg-red-100 text-red-800
+                                    @elseif($reservationStatus === 'expired') bg-red-100 text-red-800
                                     @else bg-gray-100 text-gray-800
                                     @endif">
                                     @if($reservationStatus === 'pending') ⏳ En attente
                                     @elseif($reservationStatus === 'confirmed') ✅ Confirmée
                                     @elseif($reservationStatus === 'completed') 🎉 Terminée
                                     @elseif($reservationStatus === 'cancelled') ❌ Annulée
+                                    @elseif($reservationStatus === 'expired') ⏰ Expirée
                                     @else {{ $reservationStatus }}
                                     @endif
                                 </span>
                                 @if($order->payment_status === 'partial')
                                 <div class="mt-2">
+                                    @if(in_array($reservationStatus, ['cancelled', 'expired', 'terminated']))
+                                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                        <i class="fas fa-ban mr-1"></i>Reste non récupérable
+                                    </span>
+                                    @else
                                     <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                         <i class="fas fa-coins mr-1"></i>Acompte payé
                                     </span>
+                                    @endif
                                 </div>
                                 @endif
                             </div>
@@ -137,38 +145,86 @@
                             <!-- Informations financières -->
                             <div class="space-y-2">
                                 @php
-                                    $totalAmount = $order->total_amount ?? 0;
-                                    $acompte = $order->deposit_amount ?? ($totalAmount * 0.5);
-                                    $solde = $order->remaining_amount ?? ($totalAmount - $acompte);
+                                    $totalAmount = $order->original_price ?? ($order->total_amount ?? 0);
+                                    $reservationStatus = $order->reservationRequest ? $order->reservationRequest->status : 'pending';
+                                    $isCancelledOrExpired = in_array($reservationStatus,['cancelled','expired']);
+                                    $isFinalized = in_array($reservationStatus, ['cancelled', 'expired', 'terminated', 'completed']);
+                                    // Déterminer acompte logique
+                                    if($order->payment_status === 'partial') {
+                                        $acompte = $order->deposit_amount ?? ($totalAmount * 0.5);
+                                    } elseif($order->payment_status === 'paid' && in_array($reservationStatus,['completed','terminated'])) {
+                                        $acompte = $totalAmount; // intégral seulement si terminé
+                                    } elseif($order->payment_status === 'paid' && $isCancelledOrExpired) {
+                                        $acompte = $order->deposit_amount ?? ($totalAmount * 0.5);
+                                        if($acompte >= $totalAmount) { $acompte = $totalAmount * 0.5; }
+                                    } elseif($order->payment_status === 'pending') {
+                                        $acompte = 0;
+                                    } else {
+                                        $acompte = $order->deposit_amount ?? ($totalAmount * 0.5);
+                                    }
+                                    $solde = max($totalAmount - $acompte, 0);
                                 @endphp
-                                @if($order->payment_status === 'partial')
+                                @if($order->payment_status === 'partial' || ($order->payment_status === 'paid' && $acompte < $totalAmount))
                                 <div class="bg-blue-50 p-3 rounded-lg">
                                     <div class="text-sm font-medium text-blue-800 mb-1">
-                                        <i class="fas fa-money-bill-wave mr-1"></i>Acompte payé (50%)
+                                        <i class="fas fa-money-bill-wave mr-1"></i>Acompte payé
+                                        @if($acompte>0 && $acompte < $totalAmount) <span class="text-xs text-blue-600">({{ round(($acompte/$totalAmount)*100) }}%)</span>@endif
                                     </div>
-                                    <div class="text-xs text-blue-700">
-                                        Payé: {{ number_format($acompte, 0) }} F CFA
-                                    </div>
-                                    <div class="text-xs text-blue-700">
-                                        Total: {{ number_format($totalAmount, 0) }} F CFA
-                                    </div>
-                                    <div class="text-xs text-orange-600 font-medium">
-                                        Reste: {{ number_format($solde, 0) }} F CFA
-                                    </div>
+                                    <div class="text-xs text-blue-700">Payé: {{ number_format($acompte, 0) }} F CFA</div>
+                                    <div class="text-xs text-blue-700">Total: {{ number_format($totalAmount, 0) }} F CFA</div>
+                                    @if($isCancelledOrExpired && $solde>0)
+                                        <div class="text-xs text-red-600 font-medium">
+                                            <span class="line-through">Reste: {{ number_format($solde, 0) }} F CFA</span>
+                                            <br><span class="text-red-500">🚫 Non récupérable</span>
+                                        </div>
+                                    @elseif($isFinalized && !in_array($reservationStatus,['completed','terminated']) && $solde>0)
+                                        <div class="text-xs text-red-600 font-medium">
+                                            <span class="line-through">Reste: {{ number_format($solde, 0) }} F CFA</span>
+                                            <br><span class="text-red-500">🚫 Paiement annulé</span>
+                                        </div>
+                                    @elseif($solde>0)
+                                        <div class="text-xs text-orange-600 font-medium">Reste: {{ number_format($solde, 0) }} F CFA</div>
+                                    @else
+                                        <div class="text-xs text-green-600 font-medium">Soldé</div>
+                                    @endif
                                 </div>
                                 @elseif($order->payment_status === 'paid')
-                                <div class="bg-green-50 p-3 rounded-lg">
-                                    <div class="text-sm font-medium text-green-800">
-                                        <i class="fas fa-check-circle mr-1"></i>{{ number_format($totalAmount, 0) }} F CFA
+                                    @if(in_array($reservationStatus, ['completed','terminated']))
+                                    <div class="bg-green-50 p-3 rounded-lg">
+                                        <div class="text-sm font-medium text-green-800">
+                                            <i class="fas fa-check-circle mr-1"></i>{{ number_format($totalAmount, 0) }} F CFA
+                                        </div>
+                                        <div class="text-xs text-green-700">Paiement complet</div>
                                     </div>
-                                    <div class="text-xs text-green-700">Paiement complet</div>
-                                </div>
-                                @else
+                                    @elseif($isCancelledOrExpired)
+                                    <div class="bg-red-50 p-3 rounded-lg">
+                                        <div class="text-sm font-medium text-red-800 mb-1">
+                                            <i class="fas fa-ban mr-1"></i>Réservation {{ $reservationStatus === 'cancelled' ? 'annulée' : 'expirée' }}
+                                        </div>
+                                        <div class="text-xs text-red-700">Acompte payé: {{ number_format($acompte,0) }} F CFA</div>
+                                        @if($solde>0)
+                                        <div class="text-xs text-red-600 font-medium">
+                                            <span class="line-through">Reste: {{ number_format($solde,0) }} F CFA</span>
+                                            <br><span class="text-red-500">🚫 Non récupérable</span>
+                                        </div>
+                                        @else
+                                        <div class="text-xs text-red-600 font-medium">🚫 Paiement annulé</div>
+                                        @endif
+                                    </div>
+                                    @else
+                                    <div class="bg-green-50 p-3 rounded-lg">
+                                        <div class="text-sm font-medium text-green-800">
+                                            <i class="fas fa-check-circle mr-1"></i>{{ number_format($totalAmount, 0) }} F CFA
+                                        </div>
+                                        <div class="text-xs text-green-700">Payé</div>
+                                    </div>
+                                    @endif
+                                @elseif($order->payment_status === 'pending')
                                 <div class="bg-yellow-50 p-3 rounded-lg">
-                                    <div class="text-sm font-medium text-yellow-800">
-                                        <i class="fas fa-clock mr-1"></i>{{ number_format($order->original_price, 0) }} F CFA
+                                    <div class="text-sm font-medium text-yellow-800 mb-1">
+                                        <i class="fas fa-clock mr-1"></i>Paiement en attente
                                     </div>
-                                    <div class="text-xs text-yellow-700">En attente de paiement</div>
+                                    <div class="text-xs text-yellow-700">Total: {{ number_format($totalAmount, 0) }} F CFA</div>
                                 </div>
                                 @endif
                             </div>

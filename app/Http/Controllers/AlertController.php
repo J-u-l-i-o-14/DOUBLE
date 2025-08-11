@@ -46,12 +46,16 @@ class AlertController extends Controller
         // Statistiques des alertes
         $stats = [
             'total' => Alert::where('center_id', $user->center_id)->count(),
-            'unresolved' => Alert::where('center_id', $user->center_id)->where('resolved', false)->count(),
+            'active' => Alert::where('center_id', $user->center_id)->where('resolved', false)->count(),
             'low_stock' => Alert::where('center_id', $user->center_id)->where('type', 'low_stock')->where('resolved', false)->count(),
             'expiration' => Alert::where('center_id', $user->center_id)->where('type', 'expiration')->where('resolved', false)->count(),
         ];
 
-        return view('alerts.index', compact('alerts', 'stats'));
+        // Déterminer quel template utiliser
+        $layout = $request->query('layout', 'app'); // Par défaut app.blade.php
+        $viewName = $layout === 'main' ? 'alerts.index-main' : 'alerts.index';
+
+        return view($viewName, compact('alerts', 'stats'));
     }
 
     /**

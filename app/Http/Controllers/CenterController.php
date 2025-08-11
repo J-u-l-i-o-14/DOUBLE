@@ -12,12 +12,23 @@ class CenterController extends Controller
     {
         $user = auth()->user();
         $regionId = $user->center->region_id ?? null;
-        $centers = Center::with('region')
-            ->when($regionId, function($query) use ($regionId) {
-                $query->where('region_id', $regionId);
+        $query = Center::with('region')
+            ->when($regionId, function($q) use ($regionId) {
+                $q->where('region_id', $regionId);
             })
-            ->paginate(15);
-        return view('centers.index', compact('centers'));
+            ->when(request('region'), function($q) {
+                $q->where('region_id', request('region'));
+            })
+            ->when(request('q'), function($q) {
+                $term = '%' . request('q') . '%';
+                $q->where(function($sub) use ($term) {
+                    $sub->where('name', 'like', $term)
+                        ->orWhere('address', 'like', $term);
+                });
+            });
+        $centers = $query->paginate(15)->appends(request()->query());
+        $allRegions = \App\Models\Region::orderBy('name')->get();
+        return view('centers.index', compact('centers','allRegions'));
     }
 
     public function create()
@@ -78,4 +89,4 @@ class CenterController extends Controller
         $center->delete();
         return redirect()->route('centers.index')->with('success', 'Centre supprimé avec succès.');
     }
-} 
+}

@@ -47,12 +47,11 @@ class BloodBagController extends Controller
         // Statistiques pour l'utilisateur
         $stats = [];
         if (in_array($user->role, ['admin', 'manager'])) {
-            $baseQuery = BloodBag::where('center_id', $user->center_id);
             $stats = [
-                'total' => $baseQuery->count(),
-                'available' => $baseQuery->where('status', 'available')->count(),
-                'reserved' => $baseQuery->where('status', 'reserved')->count(),
-                'expired' => $baseQuery->where('status', 'expired')->count(),
+                'total' => BloodBag::where('center_id', $user->center_id)->count(),
+                'available' => BloodBag::where('center_id', $user->center_id)->where('status', 'available')->count(),
+                'reserved' => BloodBag::where('center_id', $user->center_id)->where('status', 'reserved')->count(),
+                'expired' => BloodBag::where('center_id', $user->center_id)->where('status', 'expired')->count(),
             ];
         }
         

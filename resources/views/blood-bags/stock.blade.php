@@ -115,26 +115,26 @@
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
                                 <tr>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Groupe sanguin
-                                    </th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Disponible
-                                    </th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Réservé
-                                    </th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Total
-                                    </th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        État
-                                    </th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Groupe sanguin</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Disponible</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Réservé</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Réservations actives</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">État</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 @foreach($center->inventory as $inv)
-                                <tr class="hover:bg-gray-50">
+                                @php
+                                    $activeReservations = \App\Models\ReservationItem::with('reservationRequest')
+                                        ->whereHas('reservationRequest', function($q) use ($center){
+                                            $q->where('center_id', $center->id)
+                                              ->whereIn('status',["pending","confirmed"]);
+                                        })
+                                        ->where('blood_type_id', $inv->blood_type_id)
+                                        ->get();
+                                @endphp
+                                <tr class="hover:bg-gray-50 align-top">
                                     <td class="px-4 py-3">
                                         <div class="flex items-center">
                                             <div class="w-6 h-6 bg-red-100 rounded-full flex items-center justify-center mr-3">
@@ -142,32 +142,29 @@
                                             </div>
                                         </div>
                                     </td>
-                                    <td class="px-4 py-3">
-                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                            {{ $inv->available_quantity }}
-                                        </span>
-                                    </td>
-                                    <td class="px-4 py-3">
-                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                            {{ $inv->reserved_quantity }}
-                                        </span>
-                                    </td>
-                                    <td class="px-4 py-3">
-                                        <span class="font-medium text-gray-900">{{ $inv->available_quantity + $inv->reserved_quantity }}</span>
+                                    <td class="px-4 py-3"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">{{ $inv->available_quantity }}</span></td>
+                                    <td class="px-4 py-3"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">{{ $inv->reserved_quantity }}</span></td>
+                                    <td class="px-4 py-3"><span class="font-medium text-gray-900">{{ $inv->available_quantity + $inv->reserved_quantity }}</span></td>
+                                    <td class="px-4 py-3 text-xs text-gray-700 space-y-1">
+                                        @forelse($activeReservations as $resItem)
+                                            <div class="p-2 bg-gray-50 rounded border border-gray-200">
+                                                <div class="flex justify-between">
+                                                    <span>#{{ $resItem->reservation_request_id }}</span>
+                                                    <span class="font-medium">x{{ $resItem->quantity }}</span>
+                                                </div>
+                                                <div class="text-[10px] text-gray-500 mt-1 uppercase">{{ $resItem->reservationRequest->status }}</div>
+                                            </div>
+                                        @empty
+                                            <span class="text-gray-400">—</span>
+                                        @endforelse
                                     </td>
                                     <td class="px-4 py-3">
                                         @if($inv->available_quantity < 5)
-                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                                                <i class="fas fa-exclamation-circle mr-1"></i>Stock faible
-                                            </span>
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800"><i class="fas fa-exclamation-circle mr-1"></i>Stock faible</span>
                                         @elseif($inv->available_quantity < 10)
-                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                                <i class="fas fa-exclamation-triangle mr-1"></i>Stock moyen
-                                            </span>
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"><i class="fas fa-exclamation-triangle mr-1"></i>Stock moyen</span>
                                         @else
-                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                                <i class="fas fa-check-circle mr-1"></i>Stock OK
-                                            </span>
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"><i class="fas fa-check-circle mr-1"></i>Stock OK</span>
                                         @endif
                                     </td>
                                 </tr>
@@ -231,4 +228,4 @@
         </div>
     </div>
 </div>
-@endsection 
+@endsection

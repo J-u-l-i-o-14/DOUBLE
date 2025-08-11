@@ -9,6 +9,7 @@
 
 @php
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 @endphp
 
 @section('content')
@@ -97,6 +98,8 @@ use Illuminate\Support\Facades\Storage;
                     <span class="text-green-600">🎉 Commande terminée - Sang récupéré</span>
                 @elseif($reservationStatus === 'cancelled') 
                     <span class="text-red-600">❌ Réservation annulée</span>
+                @elseif($reservationStatus === 'expired') 
+                    <span class="text-red-600">⏰ Réservation expirée</span>
                 @else
                     <span class="text-gray-600">📋 Statut: {{ $reservationStatus }}</span>
                 @endif
@@ -230,31 +233,57 @@ use Illuminate\Support\Facades\Storage;
 
                 @php
                     $prixTotal = $order->original_price ?? $order->total_amount ?? 0;
-                    // Si payment_status est 'partial', l'acompte payé est 50% du prix total
-                    if ($order->payment_status === 'partial') {
-                        $acomptePaye = $prixTotal * 0.5;
-                        $resteAPayer = $prixTotal * 0.5;
-                    } elseif ($order->payment_status === 'paid') {
-                        $acomptePaye = $prixTotal;
-                        $resteAPayer = 0;
-                    } else {
+                    $reservationStatus = $order->reservationRequest ? $order->reservationRequest->status : 'pending';
+                    $isFinalized = in_array($reservationStatus, ['cancelled', 'expired', 'terminated', 'completed']);
+                    $isCancelledOrExpired = in_array($reservationStatus, ['cancelled','expired']);
+                    // Logique d'acompte cohérente
+                    if($order->payment_status === 'partial') {
+                        $acomptePaye = $order->deposit_amount ?? ($prixTotal * 0.5);
+                    } elseif($order->payment_status === 'paid' && in_array($reservationStatus,['completed','terminated'])) {
+                        $acomptePaye = $prixTotal; // intégral seulement si fini
+                    } elseif($order->payment_status === 'paid' && $isCancelledOrExpired) {
+                        // Forcer affichage acompte réel (50% par défaut) et non total si annulé/expiré
+                        $acomptePaye = $order->deposit_amount ?? ($prixTotal * 0.5);
+                        if($acomptePaye >= $prixTotal) { $acomptePaye = $prixTotal * 0.5; }
+                    } elseif($order->payment_status === 'pending') {
                         $acomptePaye = 0;
-                        $resteAPayer = $prixTotal;
+                    } else {
+                        $acomptePaye = $order->deposit_amount ?? ($prixTotal * 0.5);
                     }
+                    $resteAPayer = max($prixTotal - $acomptePaye, 0);
+                    $logicalRemaining = $resteAPayer; // aligner avec nouveau calcul
                 @endphp
 
                 <div class="grid grid-cols-2 gap-4">
                     <div class="bg-green-50 p-3 rounded-lg">
-                        <label class="text-sm font-medium text-green-700">Acompte payé</label>
-                        <p class="text-lg font-semibold text-green-800">{{ number_format($acomptePaye, 0) }} F CFA</p>
-                        <p class="text-xs text-green-600">✓ {{ $order->payment_status === 'partial' ? 'Payé lors de la commande' : ($order->payment_status === 'paid' ? 'Intégralement payé' : 'En attente') }}</p>
+                        <label class="text-sm font-medium text-green-700">{{ $acomptePaye >= $prixTotal && in_array($reservationStatus,['completed','terminated']) ? 'Paiement total' : 'Acompte payé' }}</label>
+                        <p class="text-lg font-semibold text-green-800">{{ number_format($acomptePaye, 0) }} F CFA @if($acomptePaye>0 && $acomptePaye<$prixTotal) <span class="text-xs text-green-600">({{ round(($acomptePaye/$prixTotal)*100) }}%)</span>@endif</p>
+                        <p class="text-xs text-green-600">@if($acomptePaye==0) ⏳ En attente @elseif($acomptePaye<$prixTotal) ✓ Acompte réglé @else ✓ Soldé @endif</p>
                     </div>
                     
+                    @if($isFinalized && $logicalRemaining > 0 && $isCancelledOrExpired)
+                    <div class="bg-red-50 p-3 rounded-lg border border-red-200">
+                        <label class="text-sm font-medium text-red-700">Reste à payer</label>
+                        <p class="text-lg font-semibold text-red-800">
+                            <span class="line-through">{{ number_format($logicalRemaining, 0) }} F CFA</span>
+                        </p>
+                        <p class="text-xs text-red-600">🚫 Paiement non récupérable</p>
+                    </div>
+                    @elseif($isFinalized && $resteAPayer > 0 && !$isCancelledOrExpired)
+                    <div class="bg-red-50 p-3 rounded-lg border border-red-200">
+                        <label class="text-sm font-medium text-red-700">Reste à payer</label>
+                        <p class="text-lg font-semibold text-red-800">
+                            <span class="line-through">{{ number_format($resteAPayer, 0) }} F CFA</span>
+                        </p>
+                        <p class="text-xs text-red-600">🚫 Paiement annulé</p>
+                    </div>
+                    @else
                     <div class="bg-orange-50 p-3 rounded-lg">
                         <label class="text-sm font-medium text-orange-700">Reste à payer</label>
                         <p class="text-lg font-semibold text-orange-800">{{ number_format($resteAPayer, 0) }} F CFA</p>
                         <p class="text-xs text-orange-600">💰 {{ $resteAPayer > 0 ? 'Lors du retrait' : 'Soldé' }}</p>
                     </div>
+                    @endif
                 </div>
 
                 <div>
@@ -285,17 +314,25 @@ use Illuminate\Support\Facades\Storage;
 
                 <div>
                     <label class="text-sm font-medium text-gray-500">Statut de paiement</label>
-                    <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium
-                        @if($order->payment_status === 'paid') bg-green-100 text-green-800
-                        @elseif($order->payment_status === 'partial') bg-yellow-100 text-yellow-800
-                        @elseif($order->payment_status === 'pending') bg-blue-100 text-blue-800
-                        @else bg-red-100 text-red-800
-                        @endif">
-                        @if($order->payment_status === 'partial') Acompte payé (50%)
-                        @elseif($order->payment_status === 'paid') Entièrement payé
-                        @else {{ ucfirst($order->payment_status) }}
-                        @endif
-                    </span>
+                    @if($isCancelledOrExpired && $order->payment_status === 'paid')
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
+                            🚫 Réservation {{ $reservationStatus === 'cancelled' ? 'annulée' : 'expirée' }} - Reste non récupérable
+                        </span>
+                    @elseif($isFinalized && $order->payment_status !== 'paid')
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">🚫 Paiement annulé</span>
+                    @else
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium
+                            @if($isCancelledOrExpired && $order->payment_status==='paid') bg-red-100 text-red-800
+                            @elseif($order->payment_status === 'paid') bg-green-100 text-green-800
+                            @elseif($order->payment_status === 'partial') bg-yellow-100 text-yellow-800
+                            @elseif($order->payment_status === 'pending') bg-blue-100 text-blue-800
+                            @else bg-red-100 text-red-800 @endif">
+                            @if($isCancelledOrExpired && $order->payment_status==='paid') Réservation {{ $reservationStatus==='cancelled'?'annulée':'expirée' }}
+                            @elseif($order->payment_status === 'partial' || ($order->payment_status==='paid' && $acomptePaye < $prixTotal)) Acompte payé
+                            @elseif($order->payment_status === 'paid') Payé
+                            @else {{ ucfirst($order->payment_status) }} @endif
+                        </span>
+                    @endif
                 </div>
             </div>
         </div>
@@ -335,11 +372,14 @@ use Illuminate\Support\Facades\Storage;
                 <div class="space-y-2">
                     @foreach($prescriptionImages as $image)
                     <div class="mb-2">
-                        <img src="{{ asset('storage/prescriptions/' . $image) }}" 
+                        @php
+                            $imagePath = Str::startsWith($image, ['http://','https://']) ? $image : 'storage/' . ltrim($image,'/');
+                        @endphp
+                        <img src="{{ asset($imagePath) }}" 
                              alt="Ordonnance" 
                              class="w-full h-32 object-cover rounded-lg border cursor-pointer hover:opacity-75 transition-opacity"
-                             onclick="openImageModal('{{ asset('storage/prescriptions/' . $image) }}', 'Ordonnance médicale')">
-                        <p class="text-xs text-gray-500 text-center">{{ $image }}</p>
+                             onclick="openImageModal('{{ asset($imagePath) }}', 'Ordonnance médicale')">
+                        <p class="text-xs text-gray-500 text-center">{{ basename($image) }}</p>
                     </div>
                     @endforeach
                     <p class="text-xs text-gray-500 text-center">Cliquer pour agrandir</p>
@@ -422,6 +462,23 @@ use Illuminate\Support\Facades\Storage;
                 </li>
 
                 @if($order->payment_status === 'partial' || $order->payment_status === 'paid')
+                @php
+                    $reservationStatus = $order->reservationRequest->status ?? null;
+                    $isCompleted = in_array($reservationStatus,['completed','terminated']);
+                    $isCancelledOrExpired = in_array($reservationStatus,['cancelled','expired']);
+                    $baseTotal = $order->original_price ?? $order->total_amount;
+                    if($order->payment_status==='paid' && $isCompleted){
+                        $historiqueDeposit = $baseTotal; // 100%
+                    } elseif($order->payment_status==='paid' && $isCancelledOrExpired){
+                        $historiqueDeposit = $order->deposit_amount ?? ($baseTotal * 0.5);
+                        if($historiqueDeposit >= $baseTotal) { $historiqueDeposit = $baseTotal * 0.5; }
+                    } elseif($order->payment_status==='partial') {
+                        $historiqueDeposit = $order->deposit_amount ?? ($baseTotal * 0.5);
+                    } else {
+                        $historiqueDeposit = 0;
+                    }
+                    $depositPercent = $baseTotal > 0 ? round(($historiqueDeposit / $baseTotal)*100) : 0;
+                @endphp
                 <li>
                     <div class="relative pb-8">
                         <div class="relative flex space-x-3">
@@ -432,8 +489,8 @@ use Illuminate\Support\Facades\Storage;
                             </div>
                             <div class="min-w-0 flex-1 pt-1.5 flex justify-between space-x-4">
                                 <div>
-                                    <p class="text-sm text-gray-500">Acompte payé (50%)</p>
-                                    <p class="text-xs text-gray-400">{{ number_format($order->original_price * 0.5, 0) }} F CFA</p>
+                                    <p class="text-sm text-gray-500">Acompte payé @if($depositPercent>0) ({{ $depositPercent }}%) @endif</p>
+                                    <p class="text-xs text-gray-400">{{ number_format($historiqueDeposit, 0) }} F CFA</p>
                                 </div>
                                 <div class="text-right text-sm whitespace-nowrap text-gray-500">
                                     {{ $order->created_at->format('d/m/Y H:i') }}

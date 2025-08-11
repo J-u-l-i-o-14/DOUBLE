@@ -51,6 +51,11 @@ class BloodBag extends Model
         return $this->hasMany(ReservationBloodBag::class);
     }
 
+    public function reservations()
+    {
+        return $this->belongsToMany(ReservationRequest::class, 'reservation_blood_bags', 'blood_bag_id', 'reservation_id');
+    }
+
     // Scopes
     public function scopeAvailable($query)
     {

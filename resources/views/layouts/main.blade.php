@@ -57,8 +57,8 @@
                     <ul class="space-y-2">
                         <!-- Dashboard -->
                         <li>
-                            <a href="{{ route('dashboard') }}" 
-                               class="flex items-center px-4 py-3 text-white rounded-lg transition-colors duration-200 {{ request()->routeIs('dashboard') ? 'bg-white bg-opacity-20' : 'hover:bg-white hover:bg-opacity-10' }}">
+                            <a href="{{ auth()->user()->role === 'client' ? route('dashboard.client') : route('dashboard') }}" 
+                               class="flex items-center px-4 py-3 text-white rounded-lg transition-colors duration-200 {{ request()->routeIs('dashboard*') ? 'bg-white bg-opacity-20' : 'hover:bg-white hover:bg-opacity-10' }}">
                                 <i class="fas fa-tachometer-alt mr-3"></i>
                                 <span>Tableau de bord</span>
                             </a>
@@ -150,6 +150,16 @@
                                     <span>Réservations</span>
                                 </a>
                             </li>
+                            <li>
+                                <a href="{{ route('alerts.index', ['layout' => 'main']) }}" 
+                                   class="flex items-center px-4 py-3 text-white rounded-lg transition-colors duration-200 {{ request()->routeIs('alerts.*') ? 'bg-white bg-opacity-20' : 'hover:bg-white hover:bg-opacity-10' }}">
+                                    <i class="fas fa-exclamation-triangle mr-3"></i>
+                                    <span>Gestion des Alertes</span>
+                                    @if($alertCount > 0)
+                                        <span class="ml-2 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-red-100 bg-red-600 rounded-full animate-pulse">{{ $alertCount }}</span>
+                                    @endif
+                                </a>
+                            </li>
                         @endif
 
                         @if(auth()->user()->is_admin)
@@ -212,20 +222,51 @@
                         <div class="flex items-center space-x-4">
                             @yield('page-actions')
                             
+                                                        <!-- Bouton Dashboard pour tous les utilisateurs -->
+                            @if(!request()->routeIs('dashboard*'))
+                                <a href="{{ auth()->user()->role === 'client' ? route('dashboard.client') : route('dashboard') }}" 
+                                   class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors">
+                                    <i class="fas fa-tachometer-alt mr-2"></i>
+                                    {{ auth()->user()->role === 'client' ? 'Mon Dashboard' : 'Dashboard' }}
+                                </a>
+                            @endif
+                            
                             @if(auth()->user()->is_admin || auth()->user()->is_manager)
-                                <!-- Cloche de notifications -->
+                                <!-- Cloche de notifications améliorée -->
                                 @php
                                     $activeAlertsCount = \App\Models\Alert::where('center_id', auth()->user()->center_id)->where('resolved', false)->count();
                                     $activeAlerts = \App\Models\Alert::with('bloodType')->where('center_id', auth()->user()->center_id)->where('resolved', false)->orderBy('created_at', 'desc')->limit(5)->get();
+                                    
+                                    // Ajouter les notifications de nouvelles commandes non lues
+                                    $unreadNotificationsCount = \App\Models\Notification::where('user_id', auth()->id())->whereNull('read_at')->count();
+                                    $unreadNotifications = \App\Models\Notification::where('user_id', auth()->id())->whereNull('read_at')->orderBy('created_at', 'desc')->limit(5)->get();
+                                    
+                                    // Compter les réservations pending pour le centre
+                                    $pendingReservationsCount = \App\Models\ReservationRequest::where('center_id', auth()->user()->center_id)->where('status', 'pending')->count();
+                                    $pendingReservations = \App\Models\ReservationRequest::with('order.user')->where('center_id', auth()->user()->center_id)->where('status', 'pending')->orderBy('created_at', 'desc')->limit(5)->get();
+                                    // Nouveau total: uniquement alertes + notifications non lues
+                                    $totalNotifications = $activeAlertsCount + $unreadNotificationsCount; // retiré $pendingReservationsCount
                                 @endphp
+                                
+                                <!-- Bouton direct vers la gestion des alertes -->
+                                @if($activeAlertsCount > 0)
+                                    <a href="{{ route('alerts.index', ['layout' => 'main']) }}" 
+                                       class="inline-flex items-center px-3 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors duration-200 mr-3"
+                                       title="Gérer les {{ $activeAlertsCount }} alertes actives">
+                                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                                        {{ $activeAlertsCount }} Alerte{{ $activeAlertsCount > 1 ? 's' : '' }}
+                                    </a>
+                                @endif
+                                
                                 <div class="relative">
                                     <button type="button" 
                                             class="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors duration-200"
-                                            onclick="toggleAlertsModal()">
-                                        <i class="fas fa-bell text-lg"></i>
-                                        @if($activeAlertsCount > 0)
-                                            <span class="absolute -top-1 -right-1 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-red-600 rounded-full">
-                                                {{ $activeAlertsCount > 99 ? '99+' : $activeAlertsCount }}
+                                            onclick="toggleAlertsModal()"
+                                            title="Notifications et alertes du centre">
+                                        <i class="fas fa-bell text-lg {{ $totalNotifications > 0 ? 'text-red-500 animate-pulse' : '' }}"></i>
+                                        @if($totalNotifications > 0)
+                                            <span class="absolute -top-1 -right-1 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-red-600 rounded-full animate-bounce">
+                                                {{ $totalNotifications > 99 ? '99+' : $totalNotifications }}
                                             </span>
                                         @endif
                                     </button>
@@ -278,100 +319,182 @@
     </div>
 
     @if(auth()->user()->is_admin || auth()->user()->is_manager)
-        <!-- Modal des Alertes (style Tailwind) -->
+        <!-- Modal des Alertes et Notifications (style Tailwind) -->
         @php
             $activeAlertsCount = \App\Models\Alert::where('center_id', auth()->user()->center_id)->where('resolved', false)->count();
             $activeAlerts = \App\Models\Alert::with('bloodType')->where('center_id', auth()->user()->center_id)->where('resolved', false)->orderBy('created_at', 'desc')->limit(5)->get();
+            
+            // Réservations en attente
+            $pendingReservations = \App\Models\ReservationRequest::with(['user', 'items.bloodType'])
+                ->where('center_id', auth()->user()->center_id)
+                ->where('status', 'pending')
+                ->orderBy('created_at', 'desc')
+                ->limit(3)
+                ->get();
+            $pendingReservationsCount = \App\Models\ReservationRequest::where('center_id', auth()->user()->center_id)->where('status', 'pending')->count();
+            
+            $totalNotifications = $activeAlertsCount + $pendingReservationsCount;
         @endphp
         <div id="alertsModal" class="fixed inset-0 z-50 hidden overflow-y-auto">
             <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
                 <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onclick="closeAlertsModal()"></div>
                 
-                <div class="inline-block w-full max-w-2xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-2xl">
-                    <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-lg font-medium leading-6 text-gray-900 flex items-center">
-                            <i class="fas fa-bell text-red-600 mr-2"></i>
-                            Alertes du Centre
-                            @if($activeAlertsCount > 0)
-                                <span class="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                                    {{ $activeAlertsCount }}
+                <div class="inline-block w-full max-w-4xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-2xl">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-xl font-semibold leading-6 text-gray-900 flex items-center">
+                            <i class="fas fa-bell text-red-600 mr-3"></i>
+                            Centre de Notifications
+                            @if($totalNotifications > 0)
+                                <span class="ml-3 inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
+                                    {{ $totalNotifications }} notification{{ $totalNotifications > 1 ? 's' : '' }}
                                 </span>
                             @endif
                         </h3>
                         <button type="button" 
-                                class="text-gray-400 hover:text-gray-600"
+                                class="text-gray-400 hover:text-gray-600 text-xl"
                                 onclick="closeAlertsModal()">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
                     
-                    <div class="mt-4">
-                        @if($activeAlertsCount > 0)
-                            <div class="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                                <div class="flex items-center">
-                                    <i class="fas fa-exclamation-triangle text-yellow-600 mr-2"></i>
-                                    <div class="text-yellow-800">
-                                        <strong>{{ $activeAlertsCount }}</strong> alerte(s) nécessitent votre attention.
-                                    </div>
-                                </div>
-                            </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- Section Alertes Stock -->
+                        <div class="space-y-4">
+                            <h4 class="text-lg font-medium text-gray-900 flex items-center">
+                                <i class="fas fa-exclamation-triangle text-orange-500 mr-2"></i>
+                                Alertes Stock
+                                @if($activeAlertsCount > 0)
+                                    <span class="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                        {{ $activeAlertsCount }}
+                                    </span>
+                                @endif
+                            </h4>
                             
-                            <div class="space-y-3">
-                                @foreach($activeAlerts as $alert)
-                                    <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors duration-200">
-                                        <div class="flex items-start justify-between">
-                                            <div class="flex-1">
-                                                <div class="flex items-center mb-2">
-                                                    @if($alert->type === 'low_stock')
-                                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 mr-2">
-                                                            <i class="fas fa-tint mr-1"></i> Stock Faible
+                            @if($activeAlertsCount > 0)
+                                <div class="space-y-3 max-h-80 overflow-y-auto">
+                                    @foreach($activeAlerts as $alert)
+                                        <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors duration-200">
+                                            <div class="flex items-start justify-between">
+                                                <div class="flex-1">
+                                                    <div class="flex items-center mb-2">
+                                                        @if($alert->type === 'low_stock')
+                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 mr-2">
+                                                                <i class="fas fa-tint mr-1"></i> Stock Critique
+                                                            </span>
+                                                        @elseif($alert->type === 'expiration')
+                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 mr-2">
+                                                                <i class="fas fa-clock mr-1"></i> Expiration
+                                                            </span>
+                                                        @endif
+                                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                            {{ $alert->bloodType->group }}
                                                         </span>
-                                                    @elseif($alert->type === 'expiration')
-                                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 mr-2">
-                                                            <i class="fas fa-clock mr-1"></i> Expiration
-                                                        </span>
-                                                    @endif
-                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                                        {{ $alert->bloodType->group }}
-                                                    </span>
+                                                    </div>
+                                                    <p class="text-gray-900 text-sm mb-1">{{ $alert->message }}</p>
+                                                    <small class="text-gray-500">
+                                                        <i class="fas fa-calendar mr-1"></i>
+                                                        {{ $alert->created_at->format('d/m/Y à H:i') }}
+                                                    </small>
                                                 </div>
-                                                <p class="text-gray-900 mb-1">{{ $alert->message }}</p>
-                                                <small class="text-gray-500">
-                                                    <i class="fas fa-calendar mr-1"></i>
-                                                    {{ $alert->created_at->format('d/m/Y à H:i') }}
-                                                </small>
-                                            </div>
-                                            <div class="ml-4">
-                                                <button class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500" 
-                                                        onclick="resolveAlert({{ $alert->id }})">
-                                                    <i class="fas fa-check mr-1"></i>
-                                                    Résoudre
-                                                </button>
+                                                <div class="ml-4">
+                                                    <button class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-green-600 hover:bg-green-700 transition-colors" 
+                                                            onclick="resolveAlert({{ $alert->id }})">
+                                                        <i class="fas fa-check mr-1"></i>
+                                                        Résoudre
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
+                                    @endforeach
+                                </div>
+                                
+                                @if($activeAlertsCount > 5)
+                                    <div class="text-center">
+                                        <p class="text-gray-500 text-sm">Et {{ $activeAlertsCount - 5 }} autres alertes...</p>
                                     </div>
-                                @endforeach
-                            </div>
-                            
-                            @if($activeAlertsCount > 5)
-                                <div class="text-center mt-4">
-                                    <p class="text-gray-500">Et {{ $activeAlertsCount - 5 }} autres alertes...</p>
+                                @endif
+                            @else
+                                <div class="text-center py-6">
+                                    <i class="fas fa-check-circle text-green-500 text-3xl mb-2"></i>
+                                    <h5 class="text-lg font-medium text-green-900 mb-1">Stock OK</h5>
+                                    <p class="text-green-700 text-sm">Aucune alerte de stock active</p>
                                 </div>
                             @endif
-                        @else
-                            <div class="text-center py-8">
-                                <i class="fas fa-check-circle text-green-500 text-5xl mb-4"></i>
-                                <h3 class="text-lg font-medium text-green-900 mb-2">Aucune alerte active</h3>
-                                <p class="text-green-700">Excellent ! Votre centre n'a aucune alerte critique en cours.</p>
-                            </div>
-                        @endif
+                        </div>
+                        
+                        <!-- Section Réservations en Attente -->
+                        <div class="space-y-4">
+                            <h4 class="text-lg font-medium text-gray-900 flex items-center">
+                                <i class="fas fa-clock text-blue-500 mr-2"></i>
+                                Réservations en Attente
+                                @if($pendingReservationsCount > 0)
+                                    <span class="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                        {{ $pendingReservationsCount }}
+                                    </span>
+                                @endif
+                            </h4>
+                            
+                            @if($pendingReservationsCount > 0)
+                                <div class="space-y-3 max-h-80 overflow-y-auto">
+                                    @foreach($pendingReservations as $reservation)
+                                        <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors duration-200">
+                                            <div class="flex items-start justify-between">
+                                                <div class="flex-1">
+                                                    <div class="flex items-center mb-2">
+                                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 mr-2">
+                                                            <i class="fas fa-user mr-1"></i> {{ $reservation->user->name }}
+                                                        </span>
+                                                        <span class="text-xs text-gray-500">#{$reservation->id}</span>
+                                                    </div>
+                                                    <div class="flex flex-wrap gap-1 mb-2">
+                                                        @foreach($reservation->items as $item)
+                                                            <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800">
+                                                                {{ $item->bloodType->group }} ({{ $item->quantity }})
+                                                            </span>
+                                                        @endforeach
+                                                    </div>
+                                                    <small class="text-gray-500">
+                                                        <i class="fas fa-calendar mr-1"></i>
+                                                        {{ $reservation->created_at->format('d/m/Y à H:i') }}
+                                                    </small>
+                                                </div>
+                                                <div class="ml-4 flex flex-col space-y-1">
+                                                    <a href="{{ route('reservations.show', $reservation) }}" 
+                                                       class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors">
+                                                        <i class="fas fa-eye mr-1"></i>
+                                                        Voir
+                                                    </a>
+                                                    <button class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-green-600 hover:bg-green-700 transition-colors" 
+                                                            onclick="quickConfirmReservation({{ $reservation->id }})">
+                                                        <i class="fas fa-check mr-1"></i>
+                                                        Confirmer
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                                
+                                @if($pendingReservationsCount > 3)
+                                    <div class="text-center">
+                                        <p class="text-gray-500 text-sm">Et {{ $pendingReservationsCount - 3 }} autres réservations...</p>
+                                    </div>
+                                @endif
+                            @else
+                                <div class="text-center py-6">
+                                    <i class="fas fa-check-circle text-green-500 text-3xl mb-2"></i>
+                                    <h5 class="text-lg font-medium text-green-900 mb-1">Aucune en attente</h5>
+                                    <p class="text-green-700 text-sm">Toutes les réservations sont traitées</p>
+                                </div>
+                            @endif
+                        </div>
                     </div>
                     
-                    <div class="mt-6 flex items-center justify-between">
-                        <div>
+                    <div class="mt-8 flex items-center justify-between border-t pt-6">
+                        <div class="flex space-x-3">
                             @if($activeAlertsCount > 0)
                                 <button type="button" 
-                                        class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                                        class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors"
                                         onclick="refreshAlerts()">
                                     <i class="fas fa-sync-alt mr-2"></i>
                                     Actualiser
@@ -379,13 +502,23 @@
                             @endif
                         </div>
                         <div class="flex space-x-3">
-                            <a href="{{ route('alerts.index') }}" 
-                               class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
-                                <i class="fas fa-cog mr-2"></i>
-                                Gérer toutes les alertes
+                            <!-- <a href="{{ route('alerts.index', ['layout' => 'main']) }}" 
+                               class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-blue-700 transition-colors">
+                                <i class="fas fa-exclamation-triangle mr-2"></i>
+                                Gérer les alertes
+                            </a> -->
+                            <a href="{{ route('alerts.index', ['layout' => 'main']) }}" 
+                               class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 transition-colors">
+                                <i class="fas fa-boxes mr-2"></i>
+                                Gérer les alertes
+                            </a>
+                            <a href="{{ route('reservations.index') }}" 
+                               class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors">
+                                <i class="fas fa-list mr-2"></i>
+                                Gérer les réservations
                             </a>
                             <button type="button" 
-                                    class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+                                    class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors"
                                     onclick="closeAlertsModal()">
                                 Fermer
                             </button>
@@ -451,6 +584,34 @@
                 }
             }
 
+            function quickConfirmReservation(reservationId) {
+                console.log('quickConfirmReservation called with ID:', reservationId);
+                if (confirm('Confirmer cette réservation ? Cela décrementera automatiquement le stock disponible.')) {
+                    fetch(`/reservations/${reservationId}/confirm`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                            'Content-Type': 'application/json',
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            closeAlertsModal();
+                            setTimeout(() => {
+                                location.reload();
+                            }, 300);
+                        } else {
+                            alert('Erreur: ' + (data.message || 'Une erreur est survenue'));
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Erreur:', error);
+                        alert('Erreur de communication avec le serveur');
+                    });
+                }
+            }
+
             function refreshAlerts() {
                 console.log('refreshAlerts called');
                 fetch('/alerts/generate', {
@@ -481,8 +642,61 @@
                 });
             }
 
-            // Animation de la cloche quand il y a des alertes
-            @if($activeAlertsCount > 0)
+            // Fonction pour résoudre une alerte
+            function resolveAlert(alertId) {
+                if (confirm('Marquer cette alerte comme résolue ?')) {
+                    fetch(`/alerts/${alertId}/resolve`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                            'Content-Type': 'application/json',
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Fermer le modal et recharger la page pour mettre à jour les compteurs
+                            closeAlertsModal();
+                            setTimeout(() => {
+                                location.reload();
+                            }, 300);
+                        } else {
+                            alert('Erreur: ' + (data.message || 'Une erreur est survenue'));
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Erreur:', error);
+                        alert('Erreur de communication avec le serveur');
+                    });
+                }
+            }
+
+            // Fonction pour marquer une notification comme lue (si nécessaire)
+            function markNotificationAsRead(notificationId) {
+                fetch(`/notifications/${notificationId}/read`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'Content-Type': 'application/json',
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Recharger la page pour mettre à jour les compteurs
+                        location.reload();
+                    } else {
+                        alert('Erreur: ' + (data.message || 'Une erreur est survenue'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Erreur:', error);
+                    alert('Erreur de communication avec le serveur');
+                });
+            }
+
+            // Animation de la cloche quand il y a des notifications
+            @if($totalNotifications > 0)
                 setInterval(function() {
                     const bell = document.querySelector('.fa-bell');
                     if (bell) {
@@ -491,7 +705,7 @@
                             bell.classList.remove('animate-pulse');
                         }, 1000);
                     }
-                }, 10000); // Animation toutes les 10 secondes
+                }, 8000); // Animation toutes les 8 secondes
             @endif
         </script>
     @endif

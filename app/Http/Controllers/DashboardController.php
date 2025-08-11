@@ -113,15 +113,19 @@ class DashboardController extends Controller
             'pending_revenue' => \App\Models\ReservationRequest::when($centerFilter, function($q) use ($centerFilter) { 
                 return $q->where('center_id', $centerFilter); 
             })
-                ->whereIn('status', ['pending', 'confirmed'])
+                ->whereIn('status', ['pending', 'confirmed']) // Exclure expired, cancelled, terminated, completed
                 ->whereHas('order', function($q) {
-                    $q->where('payment_status', 'partial');
+                    $q->whereIn('payment_status', ['pending', 'partial']) // Exclure paid et failed
+                      ->whereNotIn('status', ['expired', 'cancelled', 'terminated', 'completed']);
                 })
                 ->with('order')
                 ->get()
                 ->sum(function($reservation) {
                     if ($reservation->order) {
-                        return $reservation->order->original_price - $reservation->order->total_amount;
+                        // Calculer le montant restant à payer
+                        $remaining = $reservation->order->remaining_amount ?? 
+                                    ($reservation->order->total_amount - ($reservation->order->deposit_amount ?? 0));
+                        return max(0, $remaining); // Ne pas retourner de valeurs négatives
                     }
                     return 0;
                 }),
@@ -228,15 +232,19 @@ class DashboardController extends Controller
                     return 0;
                 }),
             'pending_revenue' => \App\Models\ReservationRequest::where('center_id', $user->center_id)
-                ->whereIn('status', ['pending', 'confirmed'])
+                ->whereIn('status', ['pending', 'confirmed']) // Exclure expired, cancelled, terminated, completed
                 ->whereHas('order', function($q) {
-                    $q->where('payment_status', 'partial');
+                    $q->whereIn('payment_status', ['pending', 'partial']) // Exclure paid et failed
+                      ->whereNotIn('status', ['expired', 'cancelled', 'terminated', 'completed']);
                 })
                 ->with('order')
                 ->get()
                 ->sum(function($reservation) {
                     if ($reservation->order) {
-                        return $reservation->order->original_price - $reservation->order->total_amount;
+                        // Calculer le montant restant à payer
+                        $remaining = $reservation->order->remaining_amount ?? 
+                                    ($reservation->order->total_amount - ($reservation->order->deposit_amount ?? 0));
+                        return max(0, $remaining); // Ne pas retourner de valeurs négatives
                     }
                     return 0;
                 }),

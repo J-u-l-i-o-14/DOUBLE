@@ -3,6 +3,7 @@
 @section('page-title', 'Détails de la Réservation')
 
 @section('content')
+@php use Illuminate\Support\Str; @endphp
 <div class="space-y-6">
     <!-- En-tête avec informations principales -->
     <div class="bg-white rounded-lg shadow-md p-6">
@@ -61,7 +62,15 @@
                 </div>
                 <div>
                     <label class="text-sm font-medium text-gray-500">Téléphone</label>
-                    <p class="text-gray-900">{{ $reservation->user->phone ?? 'Non renseigné' }}</p>
+                    <p class="text-gray-900">
+                        @if($reservation->order && $reservation->order->phone_number)
+                            {{ $reservation->order->phone_number }} <span class="text-xs text-blue-600">(commande)</span>
+                        @elseif($reservation->user->phone)
+                            {{ $reservation->user->phone }} <span class="text-xs text-gray-500">(profil)</span>
+                        @else
+                            Non renseigné
+                        @endif
+                    </p>
                 </div>
                 <div>
                     <label class="text-sm font-medium text-gray-500">Rôle</label>
@@ -145,34 +154,75 @@
             <!-- Détails financiers -->
             <div class="space-y-3">
                 <h3 class="font-medium text-gray-900 border-b pb-2">Détails Financiers</h3>
+                @php
+                    $reservationStatus = $reservation->status;
+                    $isFinalized = in_array($reservationStatus, ['cancelled','expired','terminated','completed']);
+                    $isCancelledOrExpired = in_array($reservationStatus, ['cancelled','expired']);
+                    $total = $reservation->order->original_price ?? $reservation->order->total_amount ?? 0;
+                    // Détermination logique de l'acompte réel
+                    if($reservation->order->payment_status === 'partial') {
+                        $deposit = $reservation->order->deposit_amount ?? ($total * 0.5);
+                    } elseif($reservation->order->payment_status === 'paid' && in_array($reservationStatus,['completed','terminated'])) {
+                        $deposit = $total; // paiement intégral seulement si vraiment terminé
+                    } elseif($reservation->order->payment_status === 'paid' && $isCancelledOrExpired) {
+                        $deposit = $reservation->order->deposit_amount ?? ($total * 0.5);
+                        if($deposit >= $total) { $deposit = $total * 0.5; }
+                    } elseif($reservation->order->payment_status === 'pending') {
+                        $deposit = 0;
+                    } else {
+                        $deposit = $reservation->order->deposit_amount ?? ($total * 0.5);
+                    }
+                    $logicalRemaining = max($total - $deposit, 0);
+                @endphp
                 <div>
                     <label class="text-sm font-medium text-gray-500">Commande associée</label>
                     <p class="text-gray-900">#{{ $reservation->order->id }}</p>
                 </div>
                 <div>
                     <label class="text-sm font-medium text-gray-500">Prix total</label>
-                    <p class="text-gray-900 font-semibold">{{ number_format($reservation->order->total_amount ?? 0, 0) }} F CFA</p>
+                    <p class="text-gray-900 font-semibold">{{ number_format($total, 0) }} F CFA</p>
                 </div>
                 <div>
-                    <label class="text-sm font-medium text-gray-500">Acompte payé (50%)</label>
-                    <p class="text-green-600 font-semibold">{{ number_format($reservation->order->deposit_amount ?? ($reservation->order->total_amount * 0.5), 0) }} F CFA</p>
+                    <label class="text-sm font-medium text-gray-500">
+                        {{ ($deposit >= $total && in_array($reservationStatus,['completed','terminated'])) ? 'Paiement total' : 'Acompte payé' }}
+                    </label>
+                    <p class="text-green-600 font-semibold">{{ number_format($deposit, 0) }} F CFA</p>
+                    @if($deposit > 0 && $deposit < $total)
+                        <p class="text-xs text-green-600">✓ 50% payé</p>
+                    @elseif($deposit === 0)
+                        <p class="text-xs text-yellow-600">En attente de paiement</p>
+                    @endif
                 </div>
                 <div>
-                    <label class="text-sm font-medium text-gray-500">Reste à payer lors du retrait</label>
-                    <p class="text-red-600 font-semibold">{{ number_format($reservation->order->remaining_amount ?? ($reservation->order->total_amount * 0.5), 0) }} F CFA</p>
+                    <label class="text-sm font-medium text-gray-500">Reste à payer</label>
+                    @if($isCancelledOrExpired && $logicalRemaining > 0)
+                        <p class="font-semibold text-red-600"><span class="line-through">{{ number_format($logicalRemaining,0) }} F CFA</span></p>
+                        <p class="text-xs text-red-500">🚫 Non récupérable (réservation {{ $reservationStatus==='cancelled'?'annulée':'expirée' }})</p>
+                    @elseif($isFinalized && !in_array($reservationStatus,['completed','terminated']) && $logicalRemaining>0)
+                        <p class="font-semibold text-red-600"><span class="line-through">{{ number_format($logicalRemaining,0) }} F CFA</span></p>
+                        <p class="text-xs text-red-500">🚫 Paiement annulé</p>
+                    @else
+                        <p class="font-semibold text-orange-600">{{ number_format($logicalRemaining,0) }} F CFA</p>
+                        <p class="text-xs text-orange-500">{{ $logicalRemaining>0 ? 'À régler lors du retrait' : 'Soldé' }}</p>
+                    @endif
                 </div>
                 <div>
                     <label class="text-sm font-medium text-gray-500">Statut de paiement</label>
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                        @if($reservation->order->payment_status === 'paid') bg-green-100 text-green-800
-                        @elseif($reservation->order->payment_status === 'partial') bg-yellow-100 text-yellow-800
-                        @elseif($reservation->order->payment_status === 'pending') bg-blue-100 text-blue-800
-                        @else bg-red-100 text-red-800
-                        @endif">
-                        @if($reservation->order->payment_status === 'partial') Acompte payé
-                        @else {{ ucfirst($reservation->order->payment_status) }}
-                        @endif
-                    </span>
+                    @if($isCancelledOrExpired && $reservation->order->payment_status === 'paid')
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">🚫 Réservation {{ $reservationStatus==='cancelled'?'annulée':'expirée' }} - Reste non récupérable</span>
+                    @elseif($isFinalized && $reservation->order->payment_status !== 'paid')
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">🚫 Paiement annulé</span>
+                    @else
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                            @if($reservation->order->payment_status === 'paid') bg-green-100 text-green-800
+                            @elseif($reservation->order->payment_status === 'partial') bg-yellow-100 text-yellow-800
+                            @elseif($reservation->order->payment_status === 'pending') bg-blue-100 text-blue-800
+                            @else bg-red-100 text-red-800 @endif">
+                            @if($reservation->order->payment_status === 'partial') Acompte payé (50%)
+                            @elseif($reservation->order->payment_status === 'paid') Payé
+                            @else {{ ucfirst($reservation->order->payment_status) }} @endif
+                        </span>
+                    @endif
                 </div>
             </div>
 
@@ -232,67 +282,117 @@
                 @endif
 
                 @php
-                    // Logique pour afficher les images de prescription (nouvelle version prioritaire)
-                    $prescriptionImages = [];
+                    // Gestion complète de toutes les images soumises par le client
+                    $allClientImages = [];
+                    
+                    // 1. Images d'ordonnance multiples (prioritaire)
                     if ($reservation->order->prescription_images) {
-                        $decodedImages = is_string($reservation->order->prescription_images) ? json_decode($reservation->order->prescription_images, true) : $reservation->order->prescription_images;
+                        $decodedImages = is_string($reservation->order->prescription_images) 
+                            ? json_decode($reservation->order->prescription_images, true) 
+                            : $reservation->order->prescription_images;
                         if (is_array($decodedImages) && !empty($decodedImages)) {
-                            $prescriptionImages = $decodedImages;
+                            foreach ($decodedImages as $image) {
+                                $path = Str::startsWith($image, ['http://','https://']) ? $image : 'storage/' . ltrim($image,'/');
+                                $allClientImages[] = [
+                                    'path' => $path,
+                                    'type' => 'Ordonnance',
+                                    'icon' => 'fas fa-prescription-bottle-alt',
+                                    'color' => 'text-blue-600'
+                                ];
+                            }
                         }
                     }
-                    // Fallback vers l'ancien champ si aucune nouvelle image
-                    if (empty($prescriptionImages) && $reservation->order->prescription_image) {
-                        $prescriptionImages[] = $reservation->order->prescription_image;
+                    
+                    // 2. Image d'ordonnance unique (fallback)
+                    if (empty($allClientImages) && $reservation->order->prescription_image) {
+                        $allClientImages[] = [
+                            'path' => $reservation->order->prescription_image,
+                            'type' => 'Ordonnance',
+                            'icon' => 'fas fa-prescription-bottle-alt',
+                            'color' => 'text-blue-600'
+                        ];
+                    }
+                    
+                    // 3. Pièce d'identité du patient
+                    if ($reservation->order->patient_id_image) {
+                        $allClientImages[] = [
+                            'path' => $reservation->order->patient_id_image,
+                            'type' => 'Pièce d\'identité',
+                            'icon' => 'fas fa-id-card',
+                            'color' => 'text-green-600'
+                        ];
+                    }
+                    
+                    // 4. Certificat médical
+                    if ($reservation->order->medical_certificate) {
+                        $allClientImages[] = [
+                            'path' => $reservation->order->medical_certificate,
+                            'type' => 'Certificat médical',
+                            'icon' => 'fas fa-certificate',
+                            'color' => 'text-purple-600'
+                        ];
                     }
                 @endphp
 
-                @if(!empty($prescriptionImages))
+                @if(!empty($allClientImages))
                 <div>
-                    <label class="text-sm font-medium text-gray-500">Photos d'ordonnance ({{ count($prescriptionImages) }})</label>
-                    <div class="mt-2 grid grid-cols-2 gap-2">
-                        @foreach($prescriptionImages as $image)
-                        <div>
-                            <img src="{{ asset('storage/' . $image) }}" 
-                                 alt="Ordonnance {{ $loop->iteration }}" 
-                                 class="w-32 h-32 object-cover rounded-lg border cursor-pointer"
-                                 onclick="openImageModal('{{ asset('storage/' . $image) }}')">
-                            <p class="text-xs text-gray-500 mt-1">Image {{ $loop->iteration }} - Cliquer pour agrandir</p>
+                    <label class="text-sm font-medium text-gray-500">
+                        Documents joints ({{ count($allClientImages) }})
+                    </label>
+                    <div class="mt-3 grid grid-cols-2 md:grid-cols-3 gap-4">
+                        @foreach($allClientImages as $index => $imageData)
+                        <div class="relative">
+                            <div class="relative group">
+                                <img src="{{ asset('storage/' . $imageData['path']) }}" 
+                                     alt="{{ $imageData['type'] }} {{ $index + 1 }}" 
+                                     class="w-full h-32 object-cover rounded-lg border-2 border-gray-200 cursor-pointer hover:border-blue-400 transition-colors"
+                                     onclick="openImageModal('{{ asset('storage/' . $imageData['path']) }}')">
+                                
+                                <!-- Badge de type de document -->
+                                <div class="absolute top-2 left-2 bg-white bg-opacity-90 rounded-full px-2 py-1 flex items-center space-x-1">
+                                    <i class="{{ $imageData['icon'] }} {{ $imageData['color'] }} text-xs"></i>
+                                    <span class="text-xs font-medium text-gray-700">{{ $loop->iteration }}</span>
+                                </div>
+                                
+                                <!-- Indicateur de zoom -->
+                                <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 rounded-lg transition-opacity flex items-center justify-center">
+                                    <i class="fas fa-search-plus text-white opacity-0 group-hover:opacity-100 text-xl transition-opacity"></i>
+                                </div>
+                            </div>
+                            
+                            <!-- Description -->
+                            <div class="mt-2 text-center">
+                                <p class="text-xs font-medium {{ $imageData['color'] }}">{{ $imageData['type'] }}</p>
+                                <p class="text-xs text-gray-500">Cliquer pour agrandir</p>
+                            </div>
                         </div>
                         @endforeach
                     </div>
-                </div>
-                @endif
-
-                @if($reservation->order->patient_id_image)
-                <div>
-                    <label class="text-sm font-medium text-gray-500">Pièce d'identité patient</label>
-                    <div class="mt-2">
-                        <img src="{{ asset('storage/' . $reservation->order->patient_id_image) }}" 
-                             alt="Pièce d'identité" 
-                             class="w-32 h-32 object-cover rounded-lg border cursor-pointer"
-                             onclick="openImageModal('{{ asset('storage/' . $reservation->order->patient_id_image) }}')">
-                        <p class="text-xs text-gray-500 mt-1">Cliquer pour agrandir</p>
+                    
+                    <!-- Résumé des documents -->
+                    <div class="mt-4 p-3 bg-gray-50 rounded-lg">
+                        <h4 class="text-sm font-medium text-gray-700 mb-2">Résumé des documents soumis :</h4>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                            @php
+                                $typeCounts = [];
+                                foreach ($allClientImages as $img) {
+                                    $typeCounts[$img['type']] = ($typeCounts[$img['type']] ?? 0) + 1;
+                                }
+                            @endphp
+                            @foreach($typeCounts as $type => $count)
+                            <div class="flex items-center space-x-1">
+                                <i class="fas fa-check text-green-500"></i>
+                                <span class="text-gray-600">{{ $type }} ({{ $count }})</span>
+                            </div>
+                            @endforeach
+                        </div>
                     </div>
                 </div>
-                @endif
-
-                @if($reservation->order->medical_certificate)
-                <div>
-                    <label class="text-sm font-medium text-gray-500">Certificat médical</label>
-                    <div class="mt-2">
-                        <img src="{{ asset('storage/' . $reservation->order->medical_certificate) }}" 
-                             alt="Certificat médical" 
-                             class="w-32 h-32 object-cover rounded-lg border cursor-pointer"
-                             onclick="openImageModal('{{ asset('storage/' . $reservation->order->medical_certificate) }}')">
-                        <p class="text-xs text-gray-500 mt-1">Cliquer pour agrandir</p>
-                    </div>
-                </div>
-                @endif
-
-                @if(empty($prescriptionImages) && !$reservation->order->patient_id_image && !$reservation->order->medical_certificate)
+                @else
                 <div class="text-center py-8 text-gray-500">
                     <i class="fas fa-file-alt text-3xl mb-2"></i>
-                    <p>Aucun document joint</p>
+                    <p class="text-sm font-medium">Aucun document joint</p>
+                    <p class="text-xs text-gray-400">Le client n'a soumis aucune image ou document</p>
                 </div>
                 @endif
             </div>

@@ -69,47 +69,100 @@
 
     <!-- Filtres -->
     <div class="bg-white p-6 rounded-lg shadow">
-        <form method="GET" class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Statut</label>
-                <select name="status" class="w-full border-gray-300 rounded-md shadow-sm focus:border-red-500 focus:ring-red-500">
-                    <option value="">Tous les statuts</option>
-                    <option value="pending" {{ request('status') == 'pending' ? 'selected' : '' }}>En attente</option>
-                    <option value="confirmed" {{ request('status') == 'confirmed' ? 'selected' : '' }}>Confirmées</option>
-                    <option value="cancelled" {{ request('status') == 'cancelled' ? 'selected' : '' }}>Annulées</option>
-                    <option value="completed" {{ request('status') == 'completed' ? 'selected' : '' }}>Terminées</option>
-                    <option value="expired" {{ request('status') == 'expired' ? 'selected' : '' }}>Expirées</option>
-                </select>
+        <form method="GET" class="space-y-4">
+            <!-- Ligne 1: Recherche par ID -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Recherche par ID</label>
+                    <div class="relative">
+                        <input type="text" name="search" value="{{ request('search') }}" 
+                               placeholder="ID Réservation ou ID Commande (ex: 123)"
+                               class="w-full pl-10 pr-4 py-2 border-gray-300 rounded-md shadow-sm focus:border-red-500 focus:ring-red-500">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i class="fas fa-search text-gray-400"></i>
+                        </div>
+                    </div>
+                    <small class="text-gray-500 text-xs">Tapez un numéro pour chercher dans les réservations ou commandes</small>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Recherche par nom client</label>
+                    <div class="relative">
+                        <input type="text" name="client_name" value="{{ request('client_name') }}" 
+                               placeholder="Nom du client"
+                               class="w-full pl-10 pr-4 py-2 border-gray-300 rounded-md shadow-sm focus:border-red-500 focus:ring-red-500">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i class="fas fa-user text-gray-400"></i>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Date début</label>
-                <input type="date" name="date_from" value="{{ request('date_from') }}" 
-                       min="{{ date('Y-m-d', strtotime('-2 years')) }}"
-                       max="{{ date('Y-m-d') }}"
-                       class="w-full border-gray-300 rounded-md shadow-sm focus:border-red-500 focus:ring-red-500">
-                <small class="text-gray-500 text-xs">Date de création de la réservation</small>
+            <!-- Ligne 2: Filtres par statut et date -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Statut</label>
+                    <select name="status" class="w-full border-gray-300 rounded-md shadow-sm focus:border-red-500 focus:ring-red-500">
+                        <option value="">Tous les statuts</option>
+                        <option value="pending" {{ request('status') == 'pending' ? 'selected' : '' }}>En attente</option>
+                        <option value="confirmed" {{ request('status') == 'confirmed' ? 'selected' : '' }}>Confirmées</option>
+                        <option value="cancelled" {{ request('status') == 'cancelled' ? 'selected' : '' }}>Annulées</option>
+                        <option value="completed" {{ request('status') == 'completed' ? 'selected' : '' }}>Terminées</option>
+                        <option value="expired" {{ request('status') == 'expired' ? 'selected' : '' }}>Expirées</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Date début</label>
+                    <input type="date" name="date_from" value="{{ request('date_from') }}" 
+                           min="{{ date('Y-m-d', strtotime('-2 years')) }}"
+                           max="{{ date('Y-m-d') }}"
+                           class="w-full border-gray-300 rounded-md shadow-sm focus:border-red-500 focus:ring-red-500">
+                    <small class="text-gray-500 text-xs">Date de création</small>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Date fin</label>
+                    <input type="date" name="date_to" value="{{ request('date_to') }}" 
+                           min="{{ date('Y-m-d', strtotime('-2 years')) }}"
+                           max="{{ date('Y-m-d') }}"
+                           class="w-full border-gray-300 rounded-md shadow-sm focus:border-red-500 focus:ring-red-500">
+                    <small class="text-gray-500 text-xs">Date de création</small>
+                </div>
+
+                <div class="flex items-end space-x-2">
+                    <button type="submit" class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 flex-1">
+                        <i class="fas fa-search mr-2"></i>
+                        Rechercher
+                    </button>
+                    <a href="{{ route('reservations.index') }}" class="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500">
+                        <i class="fas fa-times"></i>
+                    </a>
+                </div>
             </div>
 
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Date fin</label>
-                <input type="date" name="date_to" value="{{ request('date_to') }}" 
-                       min="{{ date('Y-m-d', strtotime('-2 years')) }}"
-                       max="{{ date('Y-m-d') }}"
-                       class="w-full border-gray-300 rounded-md shadow-sm focus:border-red-500 focus:ring-red-500">
-                <small class="text-gray-500 text-xs">Date de création de la réservation</small>
-            </div>
-
-            <div class="flex items-end space-x-2">
-                <button type="submit" class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">
-                    <i class="fas fa-search mr-2"></i>
-                    Filtrer
-                </button>
-                <a href="{{ route('reservations.index') }}" class="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500">
-                    <i class="fas fa-times mr-2"></i>
-                    Effacer
-                </a>
-            </div>
+            @if(request()->hasAny(['search', 'client_name', 'status', 'date_from', 'date_to']))
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center">
+                            <i class="fas fa-info-circle text-blue-500 mr-2"></i>
+                            <span class="text-blue-800 text-sm">
+                                Filtres actifs : 
+                                @if(request('search')) <span class="font-medium">ID: {{ request('search') }}</span> @endif
+                                @if(request('client_name')) <span class="font-medium">Client: {{ request('client_name') }}</span> @endif
+                                @if(request('status')) <span class="font-medium">Statut: {{ ucfirst(request('status')) }}</span> @endif
+                                @if(request('date_from') || request('date_to')) 
+                                    <span class="font-medium">
+                                        Période: {{ request('date_from') ? date('d/m/Y', strtotime(request('date_from'))) : 'Début' }} 
+                                        - {{ request('date_to') ? date('d/m/Y', strtotime(request('date_to'))) : 'Fin' }}
+                                    </span> 
+                                @endif
+                            </span>
+                        </div>
+                        <span class="text-blue-600 text-sm font-medium">{{ $reservations->total() }} résultat(s)</span>
+                    </div>
+                </div>
+            @endif
         </form>
     </div>
 
@@ -142,8 +195,16 @@
                                 <input type="checkbox" name="reservation_ids[]" value="{{ $reservation->id }}" 
                                        class="reservation-checkbox rounded border-gray-300 text-red-600 shadow-sm focus:border-red-500 focus:ring-red-500">
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                #{{ $reservation->id }}
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-gray-900">
+                                    Réservation #{{ $reservation->id }}
+                                </div>
+                                @if($reservation->order)
+                                    <div class="text-xs text-gray-500">
+                                        <i class="fas fa-receipt mr-1"></i>
+                                        Commande #{{ $reservation->order->id }}
+                                    </div>
+                                @endif
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <div class="text-sm font-medium text-gray-900">{{ $reservation->user->name }}</div>
